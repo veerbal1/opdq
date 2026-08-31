@@ -1,0 +1,15 @@
+# binaries
+/bin/
+/opdq
+/server
+
+# env & secrets
+.env
+*.local
+
+# os
+.DS_Store
+
+# go
+*.test
+coverage.out
