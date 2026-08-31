@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -26,6 +28,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	defer pool.Close()
 
 	err = pool.Ping(ctx)
 	if err != nil {
@@ -47,8 +50,23 @@ func run() error {
 	}
 
 	go func() {
-		server.ListenAndServe()
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("server error", "error", err)
+		}
 	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	<-ctx.Done()
+	slog.Info("shutting down")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
 
 	return nil
 }
