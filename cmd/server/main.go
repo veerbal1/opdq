@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/veerbal/opdq/internal/config"
+	"github.com/veerbal/opdq/internal/handler"
 )
 
 func run() error {
@@ -38,9 +38,7 @@ func run() error {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Ok")
-	})
+	mux.HandleFunc("/healthz", handler.HealthCheck)
 
 	server := &http.Server{
 		Handler:           mux,
