@@ -25,3 +25,9 @@ A Go + PostgreSQL service that models a clinic's queue as data:
 
 The system is being built up piece by piece, learning the reasoning behind each
 decision along the way — not copied from a template.
+
+## Status
+
+The database schema and the core logic (state transitions, queue ordering, token
+generation) are in place. The API that clinics will actually talk to is being wired
+up next.
