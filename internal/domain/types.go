@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Appointment struct {
 	ID          int64
@@ -17,9 +21,7 @@ type Appointment struct {
 type SessionStatus string
 
 const (
-	Scheduled SessionStatus = "scheduled"
-	Active    SessionStatus = "active"
-	Completed SessionStatus = "completed"
+	Open      SessionStatus = "open"
 	Cancelled SessionStatus = "cancelled"
 )
 
@@ -34,4 +36,16 @@ type Session struct {
 	DelayMin    int
 	Status      SessionStatus
 	Version     int
+}
+
+type Clinic struct {
+	ID       int64
+	Name     string
+	PublicID uuid.UUID
+}
+
+type Doctor struct {
+	ID       int64
+	ClinicID int64
+	Name     string
 }
