@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/veerbal/opdq/internal/config"
 	"github.com/veerbal/opdq/internal/handler"
+	"github.com/veerbal/opdq/internal/store"
 )
 
 func run() error {
@@ -37,8 +38,9 @@ func run() error {
 	slog.Info("connected to database")
 
 	mux := http.NewServeMux()
+	h := handler.NewHandler(store.NewStore(pool))
 
-	mux.HandleFunc("/healthz", handler.HealthCheck)
+	mux.HandleFunc("/healthz", h.HealthCheck)
 
 	server := &http.Server{
 		Handler:           mux,

@@ -50,6 +50,10 @@ func (s *Store) CreateDoctor(ctx context.Context, name string, clinicID int64) (
 }
 
 func (s *Store) CreateSession(ctx context.Context, clinicID, doctorID int64, sessionDate, startsAt, endsAt time.Time, capacity int) (domain.Session, error) {
+	if err := domain.ValidateSession(startsAt, endsAt, capacity); err != nil {
+		return domain.Session{}, err
+	}
+
 	var session domain.Session
 	session.DoctorID = doctorID
 	session.ClinicID = clinicID
