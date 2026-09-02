@@ -27,6 +27,9 @@ func (h *Handler) Routes() *http.ServeMux {
 	mux.HandleFunc("POST /sessions", h.CreateSessionHandler)
 	mux.HandleFunc("POST /clinics", h.CreateClinicHandler)
 	mux.HandleFunc("POST /clinics/{id}/doctors", h.CreateDoctorHandler)
+	mux.HandleFunc("POST /sessions/{id}/walkins", h.CreateWalkInHandler)
+	mux.HandleFunc("POST /appointments/{id}/transition", h.TransitionAppointmentHandler)
+	mux.HandleFunc("GET /sessions/{id}/queue", h.QueueForSessionHandler)
 
 	return mux
 }
