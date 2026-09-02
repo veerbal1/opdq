@@ -37,10 +37,9 @@ func run() error {
 	}
 	slog.Info("connected to database")
 
-	mux := http.NewServeMux()
 	h := handler.NewHandler(store.NewStore(pool))
 
-	mux.HandleFunc("/healthz", h.HealthCheck)
+	mux := h.Routes()
 
 	server := &http.Server{
 		Handler:           mux,
