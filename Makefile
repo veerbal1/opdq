@@ -1,4 +1,4 @@
-.PHONY: up down logs psql run migrate-up migrate-down migrate-status
+.PHONY: up down logs psql run migrate-up migrate-down migrate-status test
 
 up:
 	docker compose up -d
@@ -23,3 +23,6 @@ migrate-down:
 
 migrate-status:
 	set -a; . ./.env; set +a; goose -dir migrations postgres "$$DATABASE_URL" status
+
+test:
+	go test -race ./...
