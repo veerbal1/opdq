@@ -1,6 +1,7 @@
 package handler_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -97,6 +98,43 @@ func TestFullFlow(t *testing.T) {
 	}
 	if queueRec.Body.String() != "[]\n" {
 		t.Fatalf("expected empty queue, got %s", queueRec.Body.String())
+	}
+
+	rows, err := testPool.Query(context.Background(),
+		`SELECT from_state, to_state FROM appointment_events WHERE appointment_id = $1 ORDER BY id`,
+		walkinResp.ID)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	type event struct {
+		from *string
+		to   string
+	}
+	var events []event
+	for rows.Next() {
+		var e event
+		if err := rows.Scan(&e.from, &e.to); err != nil {
+			t.Fatal(err)
+		}
+		events = append(events, e)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+
+	if events[0].from != nil || events[0].to != "waiting" {
+		t.Fatalf("event 1: expected NULL -> waiting, got %v -> %q", events[0].from, events[0].to)
+	}
+
+	if events[1].from == nil || *events[1].from != "waiting" || events[1].to != "in_consultation" {
+		t.Fatalf("event 2: expected waiting -> in_consultation")
 	}
 
 }
