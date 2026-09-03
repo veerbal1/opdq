@@ -27,6 +27,7 @@ type SessionStatus string
 
 const (
 	Open      SessionStatus = "open"
+	Closed    SessionStatus = "closed"
 	Cancelled SessionStatus = "cancelled"
 )
 
