@@ -6,13 +6,18 @@ import (
 	"github.com/google/uuid"
 )
 
+type Contact struct {
+	Channel string
+	Address string
+}
+
 type Appointment struct {
 	ID          int64
 	ClinicID    int64
 	SessionID   int64
 	TokenNo     int
 	PatientName string
-	Contact     string
+	Contact     Contact
 	QueuedAt    time.Time
 	Priority    int
 	State       State

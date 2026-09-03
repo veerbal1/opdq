@@ -9,6 +9,43 @@ No auth. No UI. No notifications. No deploy. Those are Loops 1–3.
 endpoints, the curl flow works end to end, and the concurrency bug has been observed
 and written down (not fixed).
 
+**✅ Loop 0 is done.** All nine steps complete. See `docs/adr/0001-walkin-token-race-condition.md`
+for the observed concurrency bug.
+
+## Post-Loop-0 review pass
+
+A review of the finished Loop 0 code found five things worth fixing before Loop 2 starts:
+
+1. **Real bug — silent server death.** The goroutine running `server.ListenAndServe()` only
+   `slog.Error`'d a startup failure (e.g. port already in use); `run()` kept waiting on
+   `<-ctx.Done()` forever, so the process stayed alive with a dead server inside it. Fixed with
+   a `serverErr` channel and `select { case <-ctx.Done(): ...; case err := <-serverErr: return err }`
+   — a failed listener now exits the process immediately, verified by starting two server
+   instances on the same port (second one now exits with code 1 instead of hanging).
+2. **No index for the queue query** — `docs/access-patterns.md` (item #3 below) identified
+   `idx_appointments_queue ON appointments (session_id, state, priority DESC, queued_at ASC)`
+   as the one missing index; the other four query patterns were already covered by the primary
+   key or the `UNIQUE (session_id, token_no)` constraint's own index. Added via migration
+   `20260903065223_add_queue_index.sql`.
+3. **`docs/access-patterns.md` never existed.** Track A calls for this *before* the schema;
+   Loop 0 built the tables first. Written after the fact, from the real queries in
+   `store.go` rather than guessed in advance — see the file itself.
+4. **`contact` generalized.** Was a single `text` column; the roadmap requires `Contact` to be
+   channel + address so a notifier swap (SMS → email) is a one-line change, not a migration.
+   Migration `20260903065819_generalize_contact.sql` splits it into `contact_channel` /
+   `contact_address` (`CHECK` enforces both-or-neither NULL, `contact_channel` currently
+   restricted to `'sms'`). `domain.Contact{Channel, Address}` is the new domain type. Fixing
+   this surfaced a real bug: `QueueForSession`'s `rows.Scan` was still scanning into the old
+   single field and had never been exercised by a test with a non-empty queue — `TestFullFlow`
+   now checks the queue *while* an appointment is still `waiting` (not just after), specifically
+   to keep that path covered.
+5. **`/healthz` accepted every HTTP method** — `mux.HandleFunc("/healthz", ...)` had no method
+   prefix, so `POST /healthz` also returned `200`. Changed to `"GET /healthz"`, matching every
+   other route.
+
+Plus: `race_test.go` now asserts `success + failed == 20` instead of only logging — a test
+that can't fail was silently worth less than it looked.
+
 ---
 
 ## Progress
@@ -20,10 +57,10 @@ and written down (not fixed).
 | 3 | Go skeleton: layout, config, slog, pgxpool, `/healthz`, graceful shutdown | **done** |
 | 4 | `goose` migrations + schema v1 | **done** |
 | 5 | `internal/domain`: types, states, `Transition(from, to) error` + unit tests | **done** |
-| 6 | `internal/store`: the SQL | **current** |
-| 7 | `internal/http`: the four endpoints | todo |
-| 8 | Integration tests against real Postgres (testcontainers-go) | todo |
-| 9 | Break it: 20 concurrent walk-ins, observe, do not fix | todo |
+| 6 | `internal/store`: the SQL | **done** |
+| 7 | `internal/handler`: the endpoints | **done** |
+| 8 | Integration tests against real Postgres (testcontainers-go) | **done** |
+| 9 | Break it: 20 concurrent walk-ins, observe, do not fix | **done** |
 
 Steps are in dependency order. Do not jump.
 
@@ -351,6 +388,20 @@ All SQL here. Signatures take and return `domain` types, never `pgx` rows.
 
 `context` with a timeout on every call. Wrap errors with context.
 
+**Extended beyond original scope:** `CreateClinic` and `CreateDoctor` were added, with real
+HTTP endpoints (`POST /clinics`, `POST /clinics/{id}/doctors`) — Loop 0 originally assumed
+clinics/doctors would be seeded manually via `psql`, but we decided to build the real thing
+instead.
+
+**Schema correction — `sessions.status` redesigned:** The original plan (`scheduled` /
+`active` / `completed` / `cancelled`, computed once at creation via a time comparison) was
+wrong — it mixed two different kinds of fact into one column: what a clock can derive
+(`scheduled`/`active`/`completed`) and what only a human decides (`cancelled`). Storing the
+derivable part was the same mistake as storing ETA. Fixed via a second migration
+(`update_session_status`): `status` is now just `open` / `cancelled` — a human decision only.
+The time-derived part (is it currently running, has it ended) is deferred — nothing in Loop 0
+reads it yet, so it isn't built until something needs it.
+
 ---
 
 ## Step 7 — HTTP
@@ -384,6 +435,48 @@ place — not scattered through the handlers.
 
 Handlers decode, call store, encode. No business logic in handlers.
 
+**As actually built — deviations from the plan above:**
+- Package is `internal/handler` (`package handler`), not `internal/http` — naming it `http`
+  collided with the stdlib `net/http` import in the same file.
+- `POST /sessions` takes full RFC3339 timestamps (`"starts_at": "2026-08-31T10:00:00+05:30"`)
+  instead of a separate `session_date` + bare `"10:00"` time — the split string format has no
+  timezone, and guessing one (hardcoding IST) was judged worse than asking the client for a
+  complete, unambiguous timestamp. `session_date` (the `DATE` column) is derived from
+  `starts_at` server-side, not sent by the client.
+- Two extra endpoints: `POST /clinics`, `POST /clinics/{id}/doctors` (see "extended beyond
+  original scope" above).
+- **Struct + methods, not closures.** `Handler{store *store.Store}`, handlers are
+  `func (h *Handler) XHandler(w, r)`. A `NewHandler(store)` constructor and a `Routes()`
+  method (returns a wired `*http.ServeMux`) keep `main.go` down to wiring only. Chosen over
+  `func XHandler(s *store.Store) http.HandlerFunc` closures because adding a second
+  dependency (a logger, later a clock) means changing every closure's signature and every
+  call site; with a struct, it's one new field and zero changed method signatures.
+- **Response helpers** (`internal/handler/response.go`): `writeJSON(w, status, v)` for any
+  payload; `errorResponse{Error string}` as the one JSON error shape; `writeErrorMessage(w,
+  status, msg)` builds it; `writeError(w, err)` maps known `domain` sentinel errors to a
+  status (`ErrSessionNotFound`/`ErrAppointmentNotFound` → 404, `ErrIllegalTransition`/
+  `ErrSessionEnded` → 409, `ErrInvalidSessionTimes`/`ErrInvalidCapacity` → 400) and falls back
+  to a generic 500 (`slog.Error` logged server-side, never leaked to the client) for anything
+  unrecognized — e.g. a raw wrapped DB error, which could otherwise leak internal detail
+  (table/column names, even the DB username) to the caller.
+- **`http.MaxBytesReader(w, r.Body, 1<<20)`** on every handler that reads a body — an
+  unbounded `json.Decode` on `r.Body` will buffer as much as a client sends.
+- **`r.Context()`** passed into every store call, not `context.Background()` — so a client
+  disconnect cancels the in-flight DB query instead of leaving it running.
+- **Validation split, not all in the handler:** "is this valid JSON, is `starts_at` a real
+  RFC3339 timestamp" is an HTTP-shape concern → handler. "`ends_at` must be after `starts_at`,
+  `capacity` must be positive" is a business rule → `domain.ValidateSession(...)`, called from
+  `store.CreateSession`, not the handler. Reasoning: a future seeder or test calling `store`
+  directly must not be able to bypass the rule — only the handler-level checks are naturally
+  skipped that way.
+- `409` vs `400`: a domain error is `409` when the *request was valid* but conflicts with
+  current state (`ErrSessionEnded`, `ErrIllegalTransition`); `400` when the *request itself*
+  was wrong (`ErrInvalidCapacity`, a malformed timestamp).
+
+**Verified end-to-end against real Postgres:** clinic → doctor → session → walk-in → illegal
+transition (`409`) → legal transition → queue (empty `[]`, not `null`, after the one
+appointment left `waiting`).
+
 ---
 
 ## Step 8 — Integration tests
@@ -414,6 +507,13 @@ Write it into `docs/adr/` or a build-log note.
 
 **Do not fix it.** The retry loop, the row lock, the isolation-level comparison — all of it
 is Loop 2, and Loop 2 only means anything if this failure was seen first.
+
+**Done.** `internal/handler/race_test.go` (`TestConcurrentWalkIns`) fires the 20 requests via
+`httptest` against the real handler/store/Postgres stack. Result: **4 succeeded, 16 failed**,
+exact error as predicted above. `-race` itself reported no Go-level race — the race is on the
+Postgres side (a lost-update between two transactions), not in Go memory, so Go's race
+detector can't see it; it had to be observed by running the test and reading the real error.
+Full writeup: `docs/adr/0001-walkin-token-race-condition.md`.
 
 ---
 

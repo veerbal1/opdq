@@ -48,17 +48,23 @@ func run() error {
 		ReadTimeout:       10 * time.Second,
 	}
 
+	serverErr := make(chan error, 1)
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server error", "error", err)
+			serverErr <- err
 		}
 	}()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	<-ctx.Done()
-	slog.Info("shutting down")
+	select {
+	case <-ctx.Done():
+		slog.Info("shutting down")
+	case err := <-serverErr:
+		return err
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

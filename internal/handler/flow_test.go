@@ -69,6 +69,17 @@ func TestFullFlow(t *testing.T) {
 		t.Fatalf("expected token_no 1, got %d", walkinResp.TokenNo)
 	}
 
+	queueBeforeReq := httptest.NewRequest("GET", fmt.Sprintf("/sessions/%d/queue", sessionResp.ID), nil)
+	queueBeforeRec := httptest.NewRecorder()
+	testMux.ServeHTTP(queueBeforeRec, queueBeforeReq)
+
+	if queueBeforeRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", queueBeforeRec.Code, queueBeforeRec.Body.String())
+	}
+	if !strings.Contains(queueBeforeRec.Body.String(), `"token_no":1`) {
+		t.Fatalf("expected token_no 1 in queue, got %s", queueBeforeRec.Body.String())
+	}
+
 	transitionReq := httptest.NewRequest("POST", fmt.Sprintf("/appointments/%d/transition", walkinResp.ID), strings.NewReader(`{"to":"in_consultation"}`))
 	transitionRec := httptest.NewRecorder()
 	testMux.ServeHTTP(transitionRec, transitionReq)
@@ -87,4 +98,5 @@ func TestFullFlow(t *testing.T) {
 	if queueRec.Body.String() != "[]\n" {
 		t.Fatalf("expected empty queue, got %s", queueRec.Body.String())
 	}
+
 }

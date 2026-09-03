@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+
+	"github.com/veerbal/opdq/internal/domain"
 )
 
 type CreateWalkInRequest struct {
@@ -33,7 +35,12 @@ func (h *Handler) CreateWalkInHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	appointment, err := h.store.CreateWalkIn(r.Context(), sessionID, req.PatientName, req.Contact, req.Priority)
+	contact := domain.Contact{}
+	if req.Contact != "" {
+		contact = domain.Contact{Channel: "sms", Address: req.Contact}
+	}
+
+	appointment, err := h.store.CreateWalkIn(r.Context(), sessionID, req.PatientName, contact, req.Priority)
 	if err != nil {
 		writeError(w, err)
 		return

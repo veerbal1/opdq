@@ -65,6 +65,11 @@ func TestConcurrentWalkIns(t *testing.T) {
 	}
 
 	t.Logf("20 concurrent walk-ins: %d succeeded, %d failed", success, failed)
+
+	if success+failed != n {
+		t.Fatalf("expected %d total responses, got %d succeeded + %d failed", n, success, failed)
+	}
+
 	for body := range bodies {
 		t.Logf("response: %s", body)
 	}

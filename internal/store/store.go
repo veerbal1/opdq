@@ -71,7 +71,7 @@ func (s *Store) CreateSession(ctx context.Context, clinicID, doctorID int64, ses
 	return session, nil
 }
 
-func (s *Store) CreateWalkIn(ctx context.Context, sessionID int64, patientName, contact string, priority int) (domain.Appointment, error) {
+func (s *Store) CreateWalkIn(ctx context.Context, sessionID int64, patientName string, contact domain.Contact, priority int) (domain.Appointment, error) {
 	var clinicID int64
 	var endsAt time.Time
 	err := s.pool.QueryRow(ctx, "SELECT clinic_id, ends_at FROM sessions WHERE id = $1;", sessionID).Scan(&clinicID, &endsAt)
@@ -82,19 +82,22 @@ func (s *Store) CreateWalkIn(ctx context.Context, sessionID int64, patientName, 
 		return domain.Appointment{}, fmt.Errorf("create walk-in: fetch session: %w", err)
 	}
 
-	// 2. time check — agar session khatam ho chuka, reject karo
 	if endsAt.Before(time.Now()) {
 		return domain.Appointment{}, domain.ErrSessionEnded
 	}
 
-	// 3. next token number nikalo (naive — SELECT MAX(token_no)+1)
 	var tokenNumber int
 	err = s.pool.QueryRow(ctx, "SELECT COALESCE(MAX(token_no), 0) + 1 FROM appointments WHERE session_id = $1;", sessionID).Scan(&tokenNumber)
 	if err != nil {
 		return domain.Appointment{}, fmt.Errorf("create walk-in: next token: %w", err)
 	}
 
-	// 4. insert karo appointment (clinic_id, session_id, token_no, patient_name, contact, queued_at=now, priority, state='waiting')
+	var channel, address *string
+	if contact.Channel != "" {
+		channel = &contact.Channel
+		address = &contact.Address
+	}
+
 	var appointment domain.Appointment
 	appointment.ClinicID = clinicID
 	appointment.SessionID = sessionID
@@ -105,8 +108,8 @@ func (s *Store) CreateWalkIn(ctx context.Context, sessionID int64, patientName, 
 	appointment.State = domain.Waiting
 
 	err = s.pool.QueryRow(ctx,
-		"INSERT INTO appointments (clinic_id, session_id, token_no, patient_name, contact, queued_at, priority, state) VALUES ($1, $2, $3, $4, $5, now(), $6, $7) RETURNING id, queued_at",
-		clinicID, sessionID, tokenNumber, patientName, contact, priority, domain.Waiting,
+		"INSERT INTO appointments (clinic_id, session_id, token_no, patient_name, contact_channel, contact_address, queued_at, priority, state) VALUES ($1, $2, $3, $4, $5, $6, now(), $7, $8) RETURNING id, queued_at",
+		clinicID, sessionID, tokenNumber, patientName, channel, address, priority, domain.Waiting,
 	).Scan(&appointment.ID, &appointment.QueuedAt)
 
 	if err != nil {
@@ -132,18 +135,23 @@ func (s *Store) TransitionAppointment(ctx context.Context, appointmentID int64, 
 	}
 
 	var appointment domain.Appointment
-	updateQuery := "UPDATE appointments SET state = $1, queued_at = CASE WHEN $1 = 'waiting' THEN now() ELSE queued_at END WHERE id = $2 RETURNING id, clinic_id, session_id, token_no, patient_name, contact, queued_at, priority, state;"
+	var channel, address *string
+	updateQuery := "UPDATE appointments SET state = $1, queued_at = CASE WHEN $1 = 'waiting' THEN now() ELSE queued_at END WHERE id = $2 RETURNING id, clinic_id, session_id, token_no, patient_name, contact_channel, contact_address, queued_at, priority, state;"
 	err = s.pool.QueryRow(ctx, updateQuery, to, appointmentID).Scan(
 		&appointment.ID,
 		&appointment.ClinicID,
 		&appointment.SessionID,
 		&appointment.TokenNo,
 		&appointment.PatientName,
-		&appointment.Contact,
+		&channel,
+		&address,
 		&appointment.QueuedAt,
 		&appointment.Priority,
 		&appointment.State,
 	)
+	if channel != nil && address != nil {
+		appointment.Contact = domain.Contact{Channel: *channel, Address: *address}
+	}
 	if err != nil {
 		return domain.Appointment{}, fmt.Errorf("transition appointment: update: %w", err)
 	}
@@ -152,20 +160,26 @@ func (s *Store) TransitionAppointment(ctx context.Context, appointmentID int64, 
 }
 
 func (s *Store) QueueForSession(ctx context.Context, sessionID int64) ([]domain.Appointment, error) {
-	query := "SELECT id, clinic_id, session_id, token_no, patient_name, contact, queued_at, priority, state FROM appointments WHERE session_id = $1 AND state = 'waiting' ORDER BY priority DESC, queued_at ASC"
+	query := "SELECT id, clinic_id, session_id, token_no, patient_name, contact_channel, contact_address, queued_at, priority, state FROM appointments WHERE session_id = $1 AND state = 'waiting' ORDER BY priority DESC, queued_at ASC"
 	rows, err := s.pool.Query(ctx, query, sessionID)
+
 	if err != nil {
 		return nil, fmt.Errorf("queue for session: %w", err)
 	}
+
 	defer rows.Close()
 
 	var appointments []domain.Appointment
 
 	for rows.Next() {
 		var a domain.Appointment
-		err := rows.Scan(&a.ID, &a.ClinicID, &a.SessionID, &a.TokenNo, &a.PatientName, &a.Contact, &a.QueuedAt, &a.Priority, &a.State)
+		var channel, address *string
+		err := rows.Scan(&a.ID, &a.ClinicID, &a.SessionID, &a.TokenNo, &a.PatientName, &channel, &address, &a.QueuedAt, &a.Priority, &a.State)
 		if err != nil {
 			return nil, fmt.Errorf("queue for session: %w", err)
+		}
+		if channel != nil && address != nil {
+			a.Contact = domain.Contact{Channel: *channel, Address: *address}
 		}
 		appointments = append(appointments, a)
 	}
