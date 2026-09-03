@@ -71,10 +71,16 @@ func (s *Store) CreateSession(ctx context.Context, clinicID, doctorID int64, ses
 	return session, nil
 }
 
-func (s *Store) CreateWalkIn(ctx context.Context, sessionID int64, patientName string, contact domain.Contact, priority int) (domain.Appointment, error) {
+func (s *Store) CreateWalkIn(ctx context.Context, sessionID int64, patientName string, contact domain.Contact, priority int, actorID *int64) (domain.Appointment, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Appointment{}, fmt.Errorf("create walk-in: begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	var clinicID int64
 	var endsAt time.Time
-	err := s.pool.QueryRow(ctx, "SELECT clinic_id, ends_at FROM sessions WHERE id = $1;", sessionID).Scan(&clinicID, &endsAt)
+	err = tx.QueryRow(ctx, "SELECT clinic_id, ends_at FROM sessions WHERE id = $1", sessionID).Scan(&clinicID, &endsAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Appointment{}, domain.ErrSessionNotFound
@@ -87,7 +93,7 @@ func (s *Store) CreateWalkIn(ctx context.Context, sessionID int64, patientName s
 	}
 
 	var tokenNumber int
-	err = s.pool.QueryRow(ctx, "SELECT COALESCE(MAX(token_no), 0) + 1 FROM appointments WHERE session_id = $1;", sessionID).Scan(&tokenNumber)
+	err = tx.QueryRow(ctx, "SELECT COALESCE(MAX(token_no), 0) + 1 FROM appointments WHERE session_id = $1", sessionID).Scan(&tokenNumber)
 	if err != nil {
 		return domain.Appointment{}, fmt.Errorf("create walk-in: next token: %w", err)
 	}
@@ -107,21 +113,41 @@ func (s *Store) CreateWalkIn(ctx context.Context, sessionID int64, patientName s
 	appointment.Priority = priority
 	appointment.State = domain.Waiting
 
-	err = s.pool.QueryRow(ctx,
-		"INSERT INTO appointments (clinic_id, session_id, token_no, patient_name, contact_channel, contact_address, queued_at, priority, state) VALUES ($1, $2, $3, $4, $5, $6, now(), $7, $8) RETURNING id, queued_at",
+	err = tx.QueryRow(ctx,
+		`INSERT INTO appointments (clinic_id, session_id, token_no, patient_name, contact_channel, contact_address, queued_at, priority, state)
+		 VALUES ($1, $2, $3, $4, $5, $6, now(), $7, $8)
+		 RETURNING id, queued_at`,
 		clinicID, sessionID, tokenNumber, patientName, channel, address, priority, domain.Waiting,
 	).Scan(&appointment.ID, &appointment.QueuedAt)
-
 	if err != nil {
 		return domain.Appointment{}, fmt.Errorf("create walk-in: insert: %w", err)
+	}
+
+	_, err = tx.Exec(ctx,
+		`INSERT INTO appointment_events (clinic_id, appointment_id, from_state, to_state, actor_id, reason)
+		 VALUES ($1, $2, NULL, $3, $4, NULL)`,
+		clinicID, appointment.ID, domain.Waiting, actorID,
+	)
+	if err != nil {
+		return domain.Appointment{}, fmt.Errorf("create walk-in: insert event: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Appointment{}, fmt.Errorf("create walk-in: commit: %w", err)
 	}
 
 	return appointment, nil
 }
 
-func (s *Store) TransitionAppointment(ctx context.Context, appointmentID int64, to domain.State) (domain.Appointment, error) {
+func (s *Store) TransitionAppointment(ctx context.Context, appointmentID int64, to domain.State, actorID *int64, reason string) (domain.Appointment, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Appointment{}, fmt.Errorf("transition appointment: begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	var currentState domain.State
-	err := s.pool.QueryRow(ctx, "SELECT state from appointments WHERE id = $1", appointmentID).Scan(&currentState)
+	err = tx.QueryRow(ctx, "SELECT state FROM appointments WHERE id = $1 FOR UPDATE", appointmentID).Scan(&currentState)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Appointment{}, domain.ErrAppointmentNotFound
@@ -129,31 +155,51 @@ func (s *Store) TransitionAppointment(ctx context.Context, appointmentID int64, 
 		return domain.Appointment{}, fmt.Errorf("transition appointment: fetch state: %w", err)
 	}
 
-	err = domain.Transition(currentState, to)
-	if err != nil {
+	if err := domain.Transition(currentState, to); err != nil {
 		return domain.Appointment{}, domain.ErrIllegalTransition
 	}
 
+	updateQuery := `
+		UPDATE appointments
+		SET state        = $1,
+		    queued_at    = CASE WHEN $1 = 'waiting'         THEN now() ELSE queued_at END,
+		    started_at   = CASE WHEN $1 = 'in_consultation' THEN now() ELSE started_at END,
+		    completed_at = CASE WHEN $1 = 'done'            THEN now() ELSE completed_at END,
+		    version      = version + 1
+		WHERE id = $2
+		RETURNING id, clinic_id, session_id, token_no, patient_name,
+		          contact_channel, contact_address, queued_at, priority, state`
+
 	var appointment domain.Appointment
 	var channel, address *string
-	updateQuery := "UPDATE appointments SET state = $1, queued_at = CASE WHEN $1 = 'waiting' THEN now() ELSE queued_at END WHERE id = $2 RETURNING id, clinic_id, session_id, token_no, patient_name, contact_channel, contact_address, queued_at, priority, state;"
-	err = s.pool.QueryRow(ctx, updateQuery, to, appointmentID).Scan(
-		&appointment.ID,
-		&appointment.ClinicID,
-		&appointment.SessionID,
-		&appointment.TokenNo,
-		&appointment.PatientName,
-		&channel,
-		&address,
-		&appointment.QueuedAt,
-		&appointment.Priority,
-		&appointment.State,
+	err = tx.QueryRow(ctx, updateQuery, to, appointmentID).Scan(
+		&appointment.ID, &appointment.ClinicID, &appointment.SessionID,
+		&appointment.TokenNo, &appointment.PatientName, &channel, &address,
+		&appointment.QueuedAt, &appointment.Priority, &appointment.State,
 	)
+	if err != nil {
+		return domain.Appointment{}, fmt.Errorf("transition appointment: update: %w", err)
+	}
 	if channel != nil && address != nil {
 		appointment.Contact = domain.Contact{Channel: *channel, Address: *address}
 	}
+
+	var reasonPtr *string
+	if reason != "" {
+		reasonPtr = &reason
+	}
+
+	_, err = tx.Exec(ctx,
+		`INSERT INTO appointment_events (clinic_id, appointment_id, from_state, to_state, actor_id, reason)
+		 VALUES ($1, $2, $3, $4, $5, $6)`,
+		appointment.ClinicID, appointment.ID, currentState, to, actorID, reasonPtr,
+	)
 	if err != nil {
-		return domain.Appointment{}, fmt.Errorf("transition appointment: update: %w", err)
+		return domain.Appointment{}, fmt.Errorf("transition appointment: insert event: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Appointment{}, fmt.Errorf("transition appointment: commit: %w", err)
 	}
 
 	return appointment, nil

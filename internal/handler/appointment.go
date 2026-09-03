@@ -32,7 +32,7 @@ func (h *Handler) TransitionAppointmentHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	appointment, err := h.store.TransitionAppointment(r.Context(), appointmentID, domain.State(req.To))
+	appointment, err := h.store.TransitionAppointment(r.Context(), appointmentID, domain.State(req.To), nil, "")
 	if err != nil {
 		writeError(w, err)
 		return

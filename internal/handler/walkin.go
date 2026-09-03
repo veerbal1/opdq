@@ -40,7 +40,7 @@ func (h *Handler) CreateWalkInHandler(w http.ResponseWriter, r *http.Request) {
 		contact = domain.Contact{Channel: "sms", Address: req.Contact}
 	}
 
-	appointment, err := h.store.CreateWalkIn(r.Context(), sessionID, req.PatientName, contact, req.Priority)
+	appointment, err := h.store.CreateWalkIn(r.Context(), sessionID, req.PatientName, contact, req.Priority, nil)
 	if err != nil {
 		writeError(w, err)
 		return
