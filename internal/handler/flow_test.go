@@ -17,7 +17,7 @@ func TestFullFlow(t *testing.T) {
 	resetDB(t)
 	sess := loginTestUser(t)
 
-	doctorReq := authedRequest(t, sess, "POST", "/doctors", `{"name":"Dr. Test"}`)
+	doctorReq := authedRequest(t, sess, "POST", "/api/doctors", `{"name":"Dr. Test"}`)
 	doctorRec := httptest.NewRecorder()
 	testMux.ServeHTTP(doctorRec, doctorReq)
 
@@ -36,7 +36,7 @@ func TestFullFlow(t *testing.T) {
 		`{"doctor_id":%d,"starts_at":%q,"ends_at":%q,"capacity":30}`,
 		doctorResp.ID, startsAt, endsAt)
 
-	sessionReq := authedRequest(t, sess, "POST", "/sessions", sessionBody)
+	sessionReq := authedRequest(t, sess, "POST", "/api/sessions", sessionBody)
 	sessionRec := httptest.NewRecorder()
 	testMux.ServeHTTP(sessionRec, sessionReq)
 
@@ -50,7 +50,7 @@ func TestFullFlow(t *testing.T) {
 	}
 
 	walkinReq := authedRequest(t, sess, "POST",
-		fmt.Sprintf("/sessions/%d/walkins", sessionResp.ID),
+		fmt.Sprintf("/api/sessions/%d/walkins", sessionResp.ID),
 		`{"patient_name":"Ravi","contact":"9999999999","priority":0}`)
 	walkinRec := httptest.NewRecorder()
 	testMux.ServeHTTP(walkinRec, walkinReq)
@@ -68,7 +68,7 @@ func TestFullFlow(t *testing.T) {
 	}
 
 	queueBeforeReq := authedRequest(t, sess, "GET",
-		fmt.Sprintf("/sessions/%d/queue", sessionResp.ID), "")
+		fmt.Sprintf("/api/sessions/%d/queue", sessionResp.ID), "")
 	queueBeforeRec := httptest.NewRecorder()
 	testMux.ServeHTTP(queueBeforeRec, queueBeforeReq)
 
@@ -80,7 +80,7 @@ func TestFullFlow(t *testing.T) {
 	}
 
 	transitionReq := authedRequest(t, sess, "POST",
-		fmt.Sprintf("/appointments/%d/transition", walkinResp.ID), `{"to":"in_consultation"}`)
+		fmt.Sprintf("/api/appointments/%d/transition", walkinResp.ID), `{"to":"in_consultation"}`)
 	transitionRec := httptest.NewRecorder()
 	testMux.ServeHTTP(transitionRec, transitionReq)
 
@@ -89,7 +89,7 @@ func TestFullFlow(t *testing.T) {
 	}
 
 	queueReq := authedRequest(t, sess, "GET",
-		fmt.Sprintf("/sessions/%d/queue", sessionResp.ID), "")
+		fmt.Sprintf("/api/sessions/%d/queue", sessionResp.ID), "")
 	queueRec := httptest.NewRecorder()
 	testMux.ServeHTTP(queueRec, queueReq)
 

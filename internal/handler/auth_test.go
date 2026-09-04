@@ -17,7 +17,7 @@ func do(req *http.Request) *httptest.ResponseRecorder {
 func TestProtectedRouteRejectsMissingCookie(t *testing.T) {
 	resetDB(t)
 
-	rec := do(httptest.NewRequest("GET", "/me", nil))
+	rec := do(httptest.NewRequest("GET", "/api/me", nil))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 without a cookie, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -27,7 +27,7 @@ func TestProtectedRouteRejectsTamperedCookie(t *testing.T) {
 	resetDB(t)
 	sess := loginTestUser(t)
 
-	req := httptest.NewRequest("GET", "/me", nil)
+	req := httptest.NewRequest("GET", "/api/me", nil)
 	req.AddCookie(&http.Cookie{Name: "session", Value: sess.cookie.Value + "x"})
 
 	rec := do(req)
@@ -40,7 +40,7 @@ func TestMutationRejectedWithoutCSRFHeader(t *testing.T) {
 	resetDB(t)
 	sess := loginTestUser(t)
 
-	req := httptest.NewRequest("POST", "/doctors", strings.NewReader(`{"name":"Dr. NoCSRF"}`))
+	req := httptest.NewRequest("POST", "/api/doctors", strings.NewReader(`{"name":"Dr. NoCSRF"}`))
 	req.AddCookie(sess.cookie) // cookie yes, X-CSRF-Token no
 
 	rec := do(req)
@@ -53,7 +53,7 @@ func TestMutationRejectedWithWrongCSRFToken(t *testing.T) {
 	resetDB(t)
 	sess := loginTestUser(t)
 
-	req := httptest.NewRequest("POST", "/doctors", strings.NewReader(`{"name":"Dr. BadCSRF"}`))
+	req := httptest.NewRequest("POST", "/api/doctors", strings.NewReader(`{"name":"Dr. BadCSRF"}`))
 	req.AddCookie(sess.cookie)
 	req.Header.Set("X-CSRF-Token", "not-the-real-token")
 
@@ -76,7 +76,7 @@ func TestLogoutDeletesSessionRow(t *testing.T) {
 		t.Fatalf("expected 1 auth session after login, got %d", before)
 	}
 
-	if rec := do(authedRequest(t, sess, "POST", "/logout", "")); rec.Code != http.StatusNoContent {
+	if rec := do(authedRequest(t, sess, "POST", "/api/logout", "")); rec.Code != http.StatusNoContent {
 		t.Fatalf("expected 204 from logout, got %d: %s", rec.Code, rec.Body.String())
 	}
 
@@ -88,7 +88,7 @@ func TestLogoutDeletesSessionRow(t *testing.T) {
 		t.Fatalf("expected 0 auth sessions after logout, got %d", after)
 	}
 
-	req := httptest.NewRequest("GET", "/me", nil)
+	req := httptest.NewRequest("GET", "/api/me", nil)
 	req.AddCookie(sess.cookie)
 	if rec := do(req); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 reusing the logged-out cookie, got %d: %s", rec.Code, rec.Body.String())
@@ -99,9 +99,9 @@ func TestLoginFailuresAreIndistinguishable(t *testing.T) {
 	resetDB(t)
 	loginTestUser(t)
 
-	wrongPassword := do(httptest.NewRequest("POST", "/login",
+	wrongPassword := do(httptest.NewRequest("POST", "/api/login",
 		strings.NewReader(`{"email":"test@clinic.com","password":"wrong"}`)))
-	unknownEmail := do(httptest.NewRequest("POST", "/login",
+	unknownEmail := do(httptest.NewRequest("POST", "/api/login",
 		strings.NewReader(`{"email":"nobody@clinic.com","password":"hunter2"}`)))
 
 	if wrongPassword.Code != http.StatusUnauthorized {

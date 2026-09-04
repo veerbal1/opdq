@@ -16,7 +16,7 @@ func TestConcurrentWalkIns(t *testing.T) {
 	resetDB(t)
 	sess := loginTestUser(t)
 
-	doctorReq := authedRequest(t, sess, "POST", "/doctors", `{"name":"Dr. Race"}`)
+	doctorReq := authedRequest(t, sess, "POST", "/api/doctors", `{"name":"Dr. Race"}`)
 	doctorRec := httptest.NewRecorder()
 	testMux.ServeHTTP(doctorRec, doctorReq)
 	var doctorResp handler.CreateDoctorResponse
@@ -30,7 +30,7 @@ func TestConcurrentWalkIns(t *testing.T) {
 		`{"doctor_id":%d,"starts_at":%q,"ends_at":%q,"capacity":30}`,
 		doctorResp.ID, startsAt, endsAt)
 
-	sessionReq := authedRequest(t, sess, "POST", "/sessions", sessionBody)
+	sessionReq := authedRequest(t, sess, "POST", "/api/sessions", sessionBody)
 	sessionRec := httptest.NewRecorder()
 	testMux.ServeHTTP(sessionRec, sessionReq)
 	var sessionResp handler.CreateSessionResponse
@@ -48,7 +48,7 @@ func TestConcurrentWalkIns(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			req := authedRequest(t, sess, "POST",
-				fmt.Sprintf("/sessions/%d/walkins", sessionResp.ID),
+				fmt.Sprintf("/api/sessions/%d/walkins", sessionResp.ID),
 				`{"patient_name":"Patient","contact":"999","priority":0}`)
 			rec := httptest.NewRecorder()
 			testMux.ServeHTTP(rec, req)

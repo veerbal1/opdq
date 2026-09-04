@@ -125,7 +125,7 @@ func loginTestUser(t *testing.T) testSession {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest("POST", "/login",
+	req := httptest.NewRequest("POST", "/api/login",
 		strings.NewReader(`{"email":"test@clinic.com","password":"hunter2"}`))
 	rec := httptest.NewRecorder()
 	testMux.ServeHTTP(rec, req)
