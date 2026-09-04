@@ -122,3 +122,31 @@ Column order follows the recipe: equality columns first (`session_id`, `state`),
 sort columns in their exact `ORDER BY` order and direction (`priority DESC, queued_at ASC`).
 With this index, Postgres can satisfy the whole query — filter and sort — from the index
 alone, without a separate sort step over the matching rows.
+
+### Proof it's actually used
+
+Creating an index doesn't mean the planner will use it — that has to be checked, not assumed.
+With only 1 row in `appointments` (real dev data at the time), `EXPLAIN (ANALYZE, BUFFERS)`
+on the query above showed a `Seq Scan`, ignoring the index entirely — correct planner
+behavior: for one row, scanning the whole table is cheaper than the overhead of an index
+lookup. An index that never appears in a plan is proving nothing; it's just write tax.
+
+Seeded 5001 rows for the same session (`generate_series`, deleted after), ran `ANALYZE
+appointments` to refresh planner statistics, then re-ran the same `EXPLAIN`:
+
+```
+Index Scan using idx_appointments_queue on appointments  (cost=0.28..467.87 rows=5001 width=75)
+                                                          (actual time=0.111..2.067 rows=5001.00 loops=1)
+  Index Cond: ((session_id = 1) AND (state = 'waiting'::text))
+  Buffers: shared hit=76
+Execution Time: 2.485 ms
+```
+
+`Index Scan using idx_appointments_queue` — confirmed used. No separate `Sort` node in the
+plan either, unlike the 1-row case — the index already returns rows in `priority DESC,
+queued_at ASC` order, so Postgres skips sorting entirely. Both things the index was designed
+to do, both visible in the plan.
+
+Lesson: verifying an index means running `EXPLAIN (ANALYZE, BUFFERS)` against a *realistic*
+row count with fresh statistics (`ANALYZE` after a bulk load) — not just confirming the
+`CREATE INDEX` succeeded.

@@ -13,6 +13,7 @@ type Contact struct {
 
 type Appointment struct {
 	ID          int64
+	PublicID    uuid.UUID
 	ClinicID    int64
 	SessionID   int64
 	TokenNo     int
@@ -87,4 +88,28 @@ type AuthSession struct {
 	CSRFToken string
 	CreatedAt time.Time
 	ExpiresAt time.Time
+}
+
+type BoardEntry struct {
+	TokenNo int
+	State   State
+}
+
+type Board struct {
+	SessionID  int64
+	DoctorName string
+	DelayMin   int
+	Status     SessionStatus
+	Entries    []BoardEntry
+}
+
+type PatientView struct {
+	TokenNo       int
+	State         State
+	SessionID     int64
+	NowServing    *int
+	Ahead         int
+	SessionStart  time.Time
+	DelayMin      int
+	AvgConsultSec int
 }

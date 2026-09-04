@@ -15,9 +15,10 @@ type CreateWalkInRequest struct {
 }
 
 type CreateWalkInResponse struct {
-	ID      int64  `json:"id"`
-	TokenNo int    `json:"token_no"`
-	State   string `json:"state"`
+	ID       int64  `json:"id"`
+	TokenNo  int    `json:"token_no"`
+	State    string `json:"state"`
+	PublicID string `json:"public_id"`
 }
 
 func (h *Handler) CreateWalkInHandler(w http.ResponseWriter, r *http.Request) {
@@ -52,8 +53,9 @@ func (h *Handler) CreateWalkInHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, CreateWalkInResponse{
-		ID:      appointment.ID,
-		TokenNo: appointment.TokenNo,
-		State:   string(appointment.State),
+		ID:       appointment.ID,
+		TokenNo:  appointment.TokenNo,
+		State:    string(appointment.State),
+		PublicID: appointment.PublicID.String(),
 	})
 }

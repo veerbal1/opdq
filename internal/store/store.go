@@ -114,9 +114,9 @@ func (s *Store) CreateWalkIn(ctx context.Context, clinicID, sessionID int64, pat
 	err = tx.QueryRow(ctx,
 		`INSERT INTO appointments (clinic_id, session_id, token_no, patient_name, contact_channel, contact_address, queued_at, priority, state)
 		 VALUES ($1, $2, $3, $4, $5, $6, now(), $7, $8)
-		 RETURNING id, queued_at`,
+		 RETURNING id, queued_at, public_id`,
 		clinicID, sessionID, tokenNumber, patientName, channel, address, priority, domain.Waiting,
-	).Scan(&appointment.ID, &appointment.QueuedAt)
+	).Scan(&appointment.ID, &appointment.QueuedAt, &appointment.PublicID)
 	if err != nil {
 		return domain.Appointment{}, fmt.Errorf("create walk-in: insert: %w", err)
 	}
@@ -410,4 +410,93 @@ func (s *Store) SetSessionDelay(ctx context.Context, clinicID, sessionID int64, 
 func (s *Store) CloseSession(ctx context.Context, clinicID, sessionID int64, version int) (domain.Session, error) {
 	return s.updateSession(ctx, "close session", "status = $1",
 		domain.Closed, sessionID, clinicID, version)
+}
+
+// BoardForSession is deliberately NOT scoped by clinic: the board is public and
+// the caller has no session. The session id is the only thing it proves, and the
+// only thing it returns is token numbers.
+func (s *Store) BoardForSession(ctx context.Context, sessionID int64) (domain.Board, error) {
+	var b domain.Board
+	b.SessionID = sessionID
+
+	err := s.pool.QueryRow(ctx,
+		`SELECT d.name, s.delay_min, s.status
+		 FROM sessions s JOIN doctors d ON d.id = s.doctor_id
+		 WHERE s.id = $1`, sessionID,
+	).Scan(&b.DoctorName, &b.DelayMin, &b.Status)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Board{}, domain.ErrSessionNotFound
+		}
+		return domain.Board{}, fmt.Errorf("board for session: %w", err)
+	}
+
+	rows, err := s.pool.Query(ctx,
+		`SELECT token_no, state FROM appointments
+		 WHERE session_id = $1 AND state IN ('waiting', 'in_consultation')
+		 ORDER BY CASE WHEN state = 'in_consultation' THEN 0 ELSE 1 END,
+		          priority DESC, queued_at ASC`, sessionID)
+	if err != nil {
+		return domain.Board{}, fmt.Errorf("board for session: %w", err)
+	}
+	defer rows.Close()
+
+	b.Entries = []domain.BoardEntry{}
+	for rows.Next() {
+		var e domain.BoardEntry
+		if err := rows.Scan(&e.TokenNo, &e.State); err != nil {
+			return domain.Board{}, fmt.Errorf("board for session: %w", err)
+		}
+		b.Entries = append(b.Entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return domain.Board{}, fmt.Errorf("board for session: %w", err)
+	}
+	return b, nil
+}
+
+// PatientViewByPublicID is public: the unguessable link is the credential.
+// An unknown id is a plain not-found, with nothing else said about it.
+func (s *Store) PatientViewByPublicID(ctx context.Context, publicID string) (domain.PatientView, error) {
+	var v domain.PatientView
+	var priority int
+	var queuedAt time.Time
+
+	err := s.pool.QueryRow(ctx,
+		`SELECT a.token_no, a.state, a.session_id, a.priority, a.queued_at,
+		        s.starts_at, s.delay_min, s.avg_consult_sec
+		 FROM appointments a JOIN sessions s ON s.id = a.session_id
+		 WHERE a.public_id = $1`, publicID,
+	).Scan(&v.TokenNo, &v.State, &v.SessionID, &priority, &queuedAt,
+		&v.SessionStart, &v.DelayMin, &v.AvgConsultSec)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.PatientView{}, domain.ErrAppointmentNotFound
+		}
+		return domain.PatientView{}, fmt.Errorf("patient view: %w", err)
+	}
+
+	var nowServing int
+	err = s.pool.QueryRow(ctx,
+		`SELECT token_no FROM appointments
+		 WHERE session_id = $1 AND state = 'in_consultation'
+		 ORDER BY started_at DESC LIMIT 1`, v.SessionID).Scan(&nowServing)
+	if err == nil {
+		v.NowServing = &nowServing
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return domain.PatientView{}, fmt.Errorf("patient view: now serving: %w", err)
+	}
+
+	// "Ahead of me" is the same ordering the queue uses, expressed as a comparison:
+	// higher priority first, then whoever was queued earlier.
+	err = s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM appointments
+		 WHERE session_id = $1 AND state = 'waiting'
+		   AND (priority > $2 OR (priority = $2 AND queued_at < $3))`,
+		v.SessionID, priority, queuedAt).Scan(&v.Ahead)
+	if err != nil {
+		return domain.PatientView{}, fmt.Errorf("patient view: ahead: %w", err)
+	}
+
+	return v, nil
 }

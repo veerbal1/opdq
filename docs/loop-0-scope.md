@@ -48,7 +48,7 @@ that can't fail was silently worth less than it looked.
 
 ---
 
-## Progress
+## Progress — Loop 0 complete
 
 | # | Step | State |
 |---|---|---|
@@ -168,7 +168,7 @@ Derived from the storyline, not copied from the roadmap's schema.
 
 ## Design work still to do
 
-- [ ] **Access-pattern list** → `docs/access-patterns.md`. Every query the system will run.
+- [x] **Access-pattern list** → `docs/access-patterns.md`. Every query the system will run.
       Track A says this comes *before* the tables; we did it backwards and must catch up.
       Format per pattern — the fields are the index recipe, in index-column order:
 
@@ -185,10 +185,10 @@ Derived from the storyline, not copied from the roadmap's schema.
       At minimum: queue for a session ordered · appointment by id · next token number for a
       session · today's sessions for a clinic · session by id · doctors for a clinic.
 
-- [ ] **Indexes** — one per access pattern, each justified by a named query.
+- [x] **Indexes** — one per access pattern, each justified by a named query.
       Composite column order: equality first, then range, then sort.
 
-- [ ] **Column types and constraints** (rules, not the DDL — he writes that):
+- [x] **Column types and constraints** (rules, not the DDL — he writes that):
       - `timestamptz` always, never `timestamp`
       - `NOT NULL` by default; nullable only where genuinely unknown
         (`started_at`, `completed_at` before they happen)
@@ -201,7 +201,7 @@ Derived from the storyline, not copied from the roadmap's schema.
       - **`sessions` and `doctors` each need `UNIQUE (clinic_id, id)`** so the composite
         foreign keys have a target to point at
 
-- [ ] **Error design** — sentinel errors in `domain`:
+- [x] **Error design** — sentinel errors in `domain`:
       `ErrIllegalTransition`, `ErrSessionNotFound`, `ErrAppointmentNotFound`.
       Mapped to HTTP status in **exactly one place**. One error response shape everywhere.
 
