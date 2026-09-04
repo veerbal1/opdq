@@ -91,6 +91,7 @@ export type QueueItem = {
   token_no: number
   patient_name: string
   priority: number
+  state: 'waiting' | 'in_consultation'
 }
 
 export function listSessions(date?: string): Promise<SessionItem[]> {
@@ -107,7 +108,7 @@ export function createWalkIn(
   patientName: string,
   contact: string,
   priority = 0,
-): Promise<{ id: number; token_no: number; state: string }> {
+): Promise<{ id: number; token_no: number; state: string; public_id: string }> {
   return request('POST', `/api/sessions/${sessionId}/walkins`, {
     patient_name: patientName,
     contact,
@@ -120,4 +121,19 @@ export function transition(
   to: string,
 ): Promise<{ id: number; state: string }> {
   return request('POST', `/api/appointments/${appointmentId}/transition`, { to })
+}
+
+export function setDelay(
+  sessionId: number,
+  delayMin: number,
+  version: number,
+): Promise<SessionItem> {
+  return request('POST', `/api/sessions/${sessionId}/delay`, {
+    delay_min: delayMin,
+    version,
+  })
+}
+
+export function closeSession(sessionId: number, version: number): Promise<SessionItem> {
+  return request('POST', `/api/sessions/${sessionId}/close`, { version })
 }

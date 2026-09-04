@@ -78,7 +78,10 @@ func (s *Store) CreateWalkIn(ctx context.Context, clinicID, sessionID int64, pat
 	defer tx.Rollback(ctx)
 
 	var endsAt time.Time
-	err = tx.QueryRow(ctx, "SELECT clinic_id, ends_at FROM sessions WHERE id = $1", sessionID).Scan(&clinicID, &endsAt)
+	var status domain.SessionStatus
+	err = tx.QueryRow(ctx,
+		"SELECT ends_at, status FROM sessions WHERE id = $1 AND clinic_id = $2",
+		sessionID, clinicID).Scan(&endsAt, &status)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Appointment{}, domain.ErrSessionNotFound
@@ -86,6 +89,11 @@ func (s *Store) CreateWalkIn(ctx context.Context, clinicID, sessionID int64, pat
 		return domain.Appointment{}, fmt.Errorf("create walk-in: fetch session: %w", err)
 	}
 
+	// A sitting stops taking walk-ins for either reason: the clock ran out, or
+	// the receptionist closed it. The status check is the one a human controls.
+	if status != domain.Open {
+		return domain.Appointment{}, domain.ErrSessionClosed
+	}
 	if endsAt.Before(time.Now()) {
 		return domain.Appointment{}, domain.ErrSessionEnded
 	}

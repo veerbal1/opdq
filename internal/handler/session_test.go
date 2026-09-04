@@ -182,11 +182,44 @@ func TestAnotherClinicsSessionIsInvisible(t *testing.T) {
 		t.Fatalf("403 confirms the session exists; expected the same answer as for a missing one, got %s", delay.Body.String())
 	}
 
+	// Adding a patient to another clinic's sitting must fail as "no such session".
+	walkin := do(authedRequest(t, sess, "POST",
+		fmt.Sprintf("/api/sessions/%d/walkins", otherSession), `{"patient_name":"Trespasser","priority":0}`))
+	if walkin.Code != http.StatusNotFound {
+		t.Fatalf("walk-in into another clinic's session: expected 404, got %d: %s",
+			walkin.Code, walkin.Body.String())
+	}
+
 	// The queue of a session in another clinic must come back empty, not 403.
 	queueRec := do(authedRequest(t, sess, "GET",
 		fmt.Sprintf("/api/sessions/%d/queue", otherSession), ""))
 	if queueRec.Code != http.StatusOK || queueRec.Body.String() != "[]\n" {
 		t.Fatalf("expected an empty queue for another clinic's session, got %d %s",
 			queueRec.Code, queueRec.Body.String())
+	}
+}
+
+// A closed sitting must stop taking patients. Nothing about ends_at has changed
+// — this is the receptionist saying the day is finished.
+func TestClosedSessionRefusesWalkIns(t *testing.T) {
+	resetDB(t)
+	sess := loginTestUser(t)
+	s := newSession(t, sess)
+
+	path := fmt.Sprintf("/api/sessions/%d/walkins", s.ID)
+
+	if rec := do(authedRequest(t, sess, "POST", path, `{"patient_name":"Before","priority":0}`)); rec.Code != http.StatusCreated {
+		t.Fatalf("walk-in before closing: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if rec := do(authedRequest(t, sess, "POST",
+		fmt.Sprintf("/api/sessions/%d/close", s.ID),
+		fmt.Sprintf(`{"version":%d}`, s.Version))); rec.Code != http.StatusOK {
+		t.Fatalf("close: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	after := do(authedRequest(t, sess, "POST", path, `{"patient_name":"After","priority":0}`))
+	if after.Code != http.StatusConflict {
+		t.Fatalf("walk-in after closing: expected 409, got %d: %s", after.Code, after.Body.String())
 	}
 }

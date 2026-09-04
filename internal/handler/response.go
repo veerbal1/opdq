@@ -31,7 +31,7 @@ func writeError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrSessionNotFound), errors.Is(err, domain.ErrAppointmentNotFound):
 		status = http.StatusNotFound
 		message = err.Error()
-	case errors.Is(err, domain.ErrIllegalTransition), errors.Is(err, domain.ErrSessionEnded),
+	case errors.Is(err, domain.ErrIllegalTransition), errors.Is(err, domain.ErrSessionEnded), errors.Is(err, domain.ErrSessionClosed),
 		errors.Is(err, domain.ErrVersionConflict):
 		status = http.StatusConflict
 		message = err.Error()
