@@ -25,7 +25,7 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Routes() *http.ServeMux {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /api/healthz", h.HealthCheck)
+	mux.HandleFunc("GET /healthz", h.HealthCheck)
 	mux.HandleFunc("POST /api/login", h.LoginHandler)
 
 	mux.HandleFunc("POST /api/doctors", h.protected(h.CreateDoctorHandler))
