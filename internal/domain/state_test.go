@@ -54,10 +54,11 @@ func TestTransition(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "in_consultation to absent - illegal",
+			// "Call" announces the token; the patient may simply not turn up.
+			name:    "in_consultation to absent - legal",
 			from:    InConsultation,
 			to:      Absent,
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name:    "done to waiting - illegal",

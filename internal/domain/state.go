@@ -15,6 +15,12 @@ var allowedTransitions = map[State]map[State]bool{
 	InConsultation: {
 		Done:    true,
 		Waiting: true,
+		// "Call" means the token was announced, not that the patient walked in.
+		// Announcing and nobody coming is the ordinary way a no-show happens, so
+		// the desk must be able to mark it from here — without first bouncing the
+		// patient back to waiting, which would reset queued_at and move them in
+		// line for no reason.
+		Absent: true,
 	},
 	Absent: {
 		Waiting: true,
