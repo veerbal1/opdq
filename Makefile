@@ -34,13 +34,14 @@ seed:
 	set -a; . ./.env; set +a; go run ./cmd/seed
 
 ui:
-	cd web && npm run build
+	cd web && bun run build
+
+dev-ui:
+	cd web && bun run dev
+
 
 build: ui
 	go build -o bin/server ./cmd/server
-
-dev-ui:
-	cd web && npm run dev
 
 start: build
 	set -a; . ./.env; set +a; ./bin/server
