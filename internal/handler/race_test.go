@@ -5,34 +5,47 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/veerbal/opdq/internal/handler"
 )
 
 func TestConcurrentWalkIns(t *testing.T) {
 	resetDB(t)
+	sess := loginTestUser(t)
 
-	clinicReq := httptest.NewRequest("POST", "/clinics", strings.NewReader(`{"name":"Race Clinic"}`))
+	clinicReq := authedRequest(t, sess, "POST", "/clinics", `{"name":"Race Clinic"}`)
 	clinicRec := httptest.NewRecorder()
 	testMux.ServeHTTP(clinicRec, clinicReq)
 	var clinicResp handler.CreateClinicResponse
-	json.NewDecoder(clinicRec.Body).Decode(&clinicResp)
+	if err := json.NewDecoder(clinicRec.Body).Decode(&clinicResp); err != nil {
+		t.Fatalf("clinic: %d %s", clinicRec.Code, clinicRec.Body.String())
+	}
 
-	doctorReq := httptest.NewRequest("POST", fmt.Sprintf("/clinics/%d/doctors", clinicResp.ID), strings.NewReader(`{"name":"Dr. Race"}`))
+	doctorReq := authedRequest(t, sess, "POST",
+		fmt.Sprintf("/clinics/%d/doctors", clinicResp.ID), `{"name":"Dr. Race"}`)
 	doctorRec := httptest.NewRecorder()
 	testMux.ServeHTTP(doctorRec, doctorReq)
 	var doctorResp handler.CreateDoctorResponse
-	json.NewDecoder(doctorRec.Body).Decode(&doctorResp)
+	if err := json.NewDecoder(doctorRec.Body).Decode(&doctorResp); err != nil {
+		t.Fatalf("doctor: %d %s", doctorRec.Code, doctorRec.Body.String())
+	}
 
-	sessionBody := fmt.Sprintf(`{"clinic_id":%d,"doctor_id":%d,"starts_at":"2026-09-03T10:00:00+05:30","ends_at":"2026-09-03T18:00:00+05:30","capacity":30}`, clinicResp.ID, doctorResp.ID)
-	sessionReq := httptest.NewRequest("POST", "/sessions", strings.NewReader(sessionBody))
+	startsAt := time.Now().Add(-time.Hour).Format(time.RFC3339)
+	endsAt := time.Now().Add(8 * time.Hour).Format(time.RFC3339)
+	sessionBody := fmt.Sprintf(
+		`{"clinic_id":%d,"doctor_id":%d,"starts_at":%q,"ends_at":%q,"capacity":30}`,
+		clinicResp.ID, doctorResp.ID, startsAt, endsAt)
+
+	sessionReq := authedRequest(t, sess, "POST", "/sessions", sessionBody)
 	sessionRec := httptest.NewRecorder()
 	testMux.ServeHTTP(sessionRec, sessionReq)
 	var sessionResp handler.CreateSessionResponse
-	json.NewDecoder(sessionRec.Body).Decode(&sessionResp)
+	if err := json.NewDecoder(sessionRec.Body).Decode(&sessionResp); err != nil {
+		t.Fatalf("session: %d %s", sessionRec.Code, sessionRec.Body.String())
+	}
 
 	const n = 20
 	var wg sync.WaitGroup
@@ -43,7 +56,9 @@ func TestConcurrentWalkIns(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req := httptest.NewRequest("POST", fmt.Sprintf("/sessions/%d/walkins", sessionResp.ID), strings.NewReader(`{"patient_name":"Patient","contact":"999","priority":0}`))
+			req := authedRequest(t, sess, "POST",
+				fmt.Sprintf("/sessions/%d/walkins", sessionResp.ID),
+				`{"patient_name":"Patient","contact":"999","priority":0}`)
 			rec := httptest.NewRecorder()
 			testMux.ServeHTTP(rec, req)
 			results <- rec.Code
@@ -57,17 +72,23 @@ func TestConcurrentWalkIns(t *testing.T) {
 
 	success, failed := 0, 0
 	for code := range results {
-		if code == http.StatusCreated {
+		switch code {
+		case http.StatusCreated:
 			success++
-		} else {
+		case http.StatusInternalServerError:
 			failed++
+		default:
+			t.Fatalf("unexpected status %d — requests are not reaching CreateWalkIn", code)
 		}
 	}
 
-	t.Logf("20 concurrent walk-ins: %d succeeded, %d failed", success, failed)
+	t.Logf("%d concurrent walk-ins: %d succeeded, %d failed", n, success, failed)
 
+	if success < 1 {
+		t.Fatal("expected at least one walk-in to succeed")
+	}
 	if success+failed != n {
-		t.Fatalf("expected %d total responses, got %d succeeded + %d failed", n, success, failed)
+		t.Fatalf("expected %d total responses, got %d + %d", n, success, failed)
 	}
 
 	for body := range bodies {

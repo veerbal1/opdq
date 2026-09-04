@@ -293,3 +293,19 @@ func (s *Store) CreateAuthSession(ctx context.Context, tokenHash []byte, userID,
 	}
 	return session, nil
 }
+
+func (s *Store) GetAuthSession(ctx context.Context, tokenHash []byte) (domain.AuthSession, error) {
+	var sess domain.AuthSession
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, user_id, clinic_id, csrf_token, created_at, expires_at
+		 FROM auth_sessions WHERE token_hash = $1 AND expires_at > now();`, tokenHash,
+	).Scan(&sess.ID, &sess.UserID, &sess.ClinicID, &sess.CSRFToken,
+		&sess.CreatedAt, &sess.ExpiresAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.AuthSession{}, domain.ErrUnauthorized
+		}
+		return domain.AuthSession{}, fmt.Errorf("get auth session: %w", err)
+	}
+	return sess, nil
+}

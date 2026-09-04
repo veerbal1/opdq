@@ -26,13 +26,15 @@ func (h *Handler) Routes() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", h.HealthCheck)
-	mux.HandleFunc("POST /sessions", h.CreateSessionHandler)
-	mux.HandleFunc("POST /clinics", h.CreateClinicHandler)
-	mux.HandleFunc("POST /clinics/{id}/doctors", h.CreateDoctorHandler)
-	mux.HandleFunc("POST /sessions/{id}/walkins", h.CreateWalkInHandler)
-	mux.HandleFunc("POST /appointments/{id}/transition", h.TransitionAppointmentHandler)
-	mux.HandleFunc("GET /sessions/{id}/queue", h.QueueForSessionHandler)
 	mux.HandleFunc("POST /login", h.LoginHandler)
+
+	mux.HandleFunc("POST /clinics", h.protected(h.CreateClinicHandler))
+	mux.HandleFunc("POST /clinics/{id}/doctors", h.protected(h.CreateDoctorHandler))
+	mux.HandleFunc("POST /sessions", h.protected(h.CreateSessionHandler))
+	mux.HandleFunc("POST /sessions/{id}/walkins", h.protected(h.CreateWalkInHandler))
+	mux.HandleFunc("POST /appointments/{id}/transition", h.protected(h.TransitionAppointmentHandler))
+
+	mux.HandleFunc("GET /sessions/{id}/queue", h.RequireAuth(h.QueueForSessionHandler))
 
 	return mux
 }
