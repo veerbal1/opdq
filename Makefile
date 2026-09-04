@@ -1,4 +1,4 @@
-.PHONY: up down logs psql run migrate-up migrate-down migrate-status test
+.PHONY: up down logs psql psql-app run seed test migrate-up migrate-down migrate-status ui build dev-ui start
 
 up:
 	docker compose up -d
@@ -32,3 +32,15 @@ test:
 
 seed:
 	set -a; . ./.env; set +a; go run ./cmd/seed
+
+ui:
+	cd web && npm run build
+
+build: ui
+	go build -o bin/server ./cmd/server
+
+dev-ui:
+	cd web && npm run dev
+
+start: build
+	set -a; . ./.env; set +a; ./bin/server

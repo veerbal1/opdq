@@ -38,5 +38,11 @@ func (h *Handler) Routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/me", h.RequireAuth(h.MeHandler))
 	mux.HandleFunc("GET /api/sessions/{id}/queue", h.RequireAuth(h.QueueForSessionHandler))
 
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		writeErrorMessage(w, http.StatusNotFound, "not found")
+	})
+
+	mux.Handle("/", spaHandler())
+
 	return mux
 }
