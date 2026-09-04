@@ -81,8 +81,6 @@ function Console() {
     if (selectedId !== null) refreshQueue(selectedId)
   }, [selectedId, refreshQueue])
 
-  // Every mutation ends the same way: report, then refetch. Never patch local
-  // state to guess what the server did — this screen's job is to be correct.
   async function run(fn: () => Promise<void>) {
     setError(null)
     setNotice(null)

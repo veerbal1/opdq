@@ -5,6 +5,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login.tsx";
 import Console from "./pages/Console.tsx";
 import Board from "./pages/Board.tsx";
+import Patient from "./pages/Patient.tsx";
 import { AuthProvider, RequireAuth } from "./auth.tsx";
 
 createRoot(document.getElementById("root")!).render(
@@ -23,6 +24,7 @@ createRoot(document.getElementById("root")!).render(
           />
           <Route path="/" element={<Navigate to="/console" replace />} />
           <Route path="/board/:id" element={<Board />} />
+          <Route path="/q/:publicId" element={<Patient />} />
           <Route path="*" element={<p>Page not found</p>} />
         </Routes>
       </AuthProvider>

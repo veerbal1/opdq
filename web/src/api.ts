@@ -150,3 +150,16 @@ export type BoardData = {
 export function board(sessionId: number): Promise<BoardData> {
   return request<BoardData>('GET', `/api/board/${sessionId}`)
 }
+
+export type PatientData = {
+  token_no: number
+  state: 'waiting' | 'in_consultation' | 'done' | 'absent'
+  now_serving: number | null
+  position: number | null
+  eta: string | null
+  message: string
+}
+
+export function patient(publicID: string): Promise<PatientData> {
+  return request<PatientData>('GET', `/api/q/${publicID}`)
+}
