@@ -91,7 +91,7 @@ export type QueueItem = {
   token_no: number
   patient_name: string
   priority: number
-  state: 'waiting' | 'in_consultation'
+  state: 'waiting' | 'in_consultation' | 'absent'
 }
 
 export function listSessions(date?: string): Promise<SessionItem[]> {

@@ -212,7 +212,7 @@ func (s *Store) TransitionAppointment(ctx context.Context, clinicID, appointment
 }
 
 func (s *Store) QueueForSession(ctx context.Context, clinicID, sessionID int64) ([]domain.Appointment, error) {
-	query := "SELECT id, clinic_id, session_id, token_no, patient_name, contact_channel, contact_address, queued_at, priority, state FROM appointments WHERE session_id = $1 AND clinic_id = $2 AND state IN ('waiting', 'in_consultation') ORDER BY CASE WHEN state = 'in_consultation' THEN 0 ELSE 1 END, priority DESC, queued_at ASC"
+	query := "SELECT id, clinic_id, session_id, token_no, patient_name, contact_channel, contact_address, queued_at, priority, state FROM appointments WHERE session_id = $1 AND clinic_id = $2 AND state IN ('waiting', 'in_consultation', 'absent') ORDER BY CASE state WHEN 'in_consultation' THEN 0 WHEN 'waiting' THEN 1 ELSE 2 END, priority DESC, queued_at ASC"
 	rows, err := s.pool.Query(ctx, query, sessionID, clinicID)
 
 	if err != nil {

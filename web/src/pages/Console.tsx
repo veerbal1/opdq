@@ -320,7 +320,13 @@ function Console() {
                   {items.map((a) => (
                     <TableRow
                       key={a.id}
-                      className={a.state === 'in_consultation' ? 'bg-accent/50' : undefined}
+                      className={
+                        a.state === 'in_consultation'
+                          ? 'bg-accent/50'
+                          : a.state === 'absent'
+                            ? 'opacity-60'
+                            : undefined
+                      }
                     >
                       <TableCell className="font-medium">{a.token_no}</TableCell>
                       <TableCell>
@@ -332,25 +338,44 @@ function Console() {
                         )}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {a.state === 'in_consultation' ? 'with doctor' : 'waiting'}
+                        {a.state === 'in_consultation'
+                          ? 'with doctor'
+                          : a.state === 'absent'
+                            ? 'no-show'
+                            : 'waiting'}
                       </TableCell>
                       <TableCell className="space-x-2 text-right">
-                        {a.state === 'waiting' ? (
-                          <Button size="sm" onClick={() => move(a.id, 'in_consultation')}>
-                            Call
+                        {a.state === 'absent' ? (
+                          // Re-check-in sends them back to waiting. The server
+                          // resets queued_at, so they land at the back of the
+                          // line — not where they were before.
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => move(a.id, 'waiting')}
+                          >
+                            Re-check-in
                           </Button>
                         ) : (
-                          <Button size="sm" onClick={() => move(a.id, 'done')}>
-                            Done
-                          </Button>
+                          <>
+                            {a.state === 'waiting' ? (
+                              <Button size="sm" onClick={() => move(a.id, 'in_consultation')}>
+                                Call
+                              </Button>
+                            ) : (
+                              <Button size="sm" onClick={() => move(a.id, 'done')}>
+                                Done
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => move(a.id, 'absent')}
+                            >
+                              No-show
+                            </Button>
+                          </>
                         )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => move(a.id, 'absent')}
-                        >
-                          No-show
-                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}

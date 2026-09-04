@@ -223,3 +223,83 @@ func TestClosedSessionRefusesWalkIns(t *testing.T) {
 		t.Fatalf("walk-in after closing: expected 409, got %d: %s", after.Code, after.Body.String())
 	}
 }
+
+// The full receptionist storyline, in the order a real desk runs it.
+// The point of the last step is placement: a re-checked-in patient must land at
+// the BACK of the line, not back where they were.
+func TestReceptionistStoryline(t *testing.T) {
+	resetDB(t)
+	sess := loginTestUser(t)
+	s := newSession(t, sess)
+
+	walkins := fmt.Sprintf("/api/sessions/%d/walkins", s.ID)
+	add := func(name string, priority int) int64 {
+		t.Helper()
+		rec := do(authedRequest(t, sess, "POST", walkins,
+			fmt.Sprintf(`{"patient_name":%q,"priority":%d}`, name, priority)))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("walk-in %s: %d %s", name, rec.Code, rec.Body.String())
+		}
+		var created struct {
+			ID int64 `json:"id"`
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+			t.Fatal(err)
+		}
+		return created.ID
+	}
+	move := func(id int64, to string) {
+		t.Helper()
+		rec := do(authedRequest(t, sess, "POST",
+			fmt.Sprintf("/api/appointments/%d/transition", id), fmt.Sprintf(`{"to":%q}`, to)))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("transition %d -> %s: %d %s", id, to, rec.Code, rec.Body.String())
+		}
+	}
+	tokensInOrder := func() []int {
+		t.Helper()
+		rec := do(authedRequest(t, sess, "GET", fmt.Sprintf("/api/sessions/%d/queue", s.ID), ""))
+		var items []handler.QueueItem
+		if err := json.NewDecoder(rec.Body).Decode(&items); err != nil {
+			t.Fatal(err)
+		}
+		out := make([]int, 0, len(items))
+		for _, i := range items {
+			out = append(out, i.TokenNo)
+		}
+		return out
+	}
+
+	amit := add("Amit", 0) // token 1
+	add("Bina", 0)         // token 2
+	add("Chetan", 0)       // token 3
+
+	// An emergency jumps the whole waiting line.
+	add("Emergency", 1) // token 4
+	if got := tokensInOrder(); got[0] != 4 {
+		t.Fatalf("expected the emergency (token 4) first, got %v", got)
+	}
+
+	// Call Amit: he stays on screen, now at the very top.
+	move(amit, "in_consultation")
+	if got := tokensInOrder(); got[0] != 1 {
+		t.Fatalf("expected the called patient (token 1) at the top, got %v", got)
+	}
+
+	// He turns out not to be there.
+	move(amit, "absent")
+	got := tokensInOrder()
+	if got[len(got)-1] != 1 {
+		t.Fatalf("expected the no-show (token 1) last, got %v", got)
+	}
+
+	// He comes back. Back of the waiting line, behind everyone who waited.
+	move(amit, "waiting")
+	got = tokensInOrder()
+	if got[len(got)-1] != 1 {
+		t.Fatalf("expected the re-checked-in patient (token 1) at the back, got %v", got)
+	}
+	if got[0] != 4 {
+		t.Fatalf("expected the emergency still first, got %v", got)
+	}
+}
