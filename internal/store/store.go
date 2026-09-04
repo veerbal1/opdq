@@ -383,9 +383,6 @@ func (s *Store) DoctorsForClinic(ctx context.Context, clinicID int64) ([]domain.
 	return doctors, nil
 }
 
-// updateSession applies one guarded change to a session row. The version in the
-// WHERE clause is what makes a stale write fail instead of silently overwriting
-// somebody else's change.
 func (s *Store) updateSession(ctx context.Context, op, setClause string, args ...any) (domain.Session, error) {
 	query := `UPDATE sessions SET ` + setClause + `, version = version + 1
 		 WHERE id = $2 AND clinic_id = $3 AND version = $4
@@ -398,8 +395,6 @@ func (s *Store) updateSession(ctx context.Context, op, setClause string, args ..
 		&x.Capacity, &x.DelayMin, &x.Status, &x.Version, &x.AvgConsultSec)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			// Either the session is not ours / does not exist, or somebody else
-			// changed it since we read it. Both are the caller's problem to retry.
 			return domain.Session{}, domain.ErrVersionConflict
 		}
 		return domain.Session{}, fmt.Errorf("%s: %w", op, err)
