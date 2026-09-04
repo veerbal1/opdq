@@ -74,7 +74,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	h := handler.NewHandler(store.NewStore(testPool))
+	h := handler.NewHandler(store.NewStore(testPool), false)
 	testMux = h.Routes()
 
 	code := m.Run()

@@ -236,3 +236,60 @@ func (s *Store) QueueForSession(ctx context.Context, sessionID int64) ([]domain.
 
 	return appointments, nil
 }
+
+func (s *Store) CreateStaffUser(ctx context.Context, clinicID int64, name, email, passwordHash string, role domain.Role) (domain.StaffUser, error) {
+	user := domain.StaffUser{
+		ClinicID:     clinicID,
+		Name:         name,
+		Email:        email,
+		PasswordHash: passwordHash,
+		Role:         role,
+	}
+
+	err := s.pool.QueryRow(ctx,
+		`INSERT INTO staff_users (clinic_id, name, email, password_hash, role)
+		 VALUES ($1, $2, $3, $4, $5)
+		 RETURNING id, created_at`,
+		clinicID, name, email, passwordHash, role,
+	).Scan(&user.ID, &user.CreatedAt)
+	if err != nil {
+		return domain.StaffUser{}, fmt.Errorf("create staff user: %w", err)
+	}
+
+	return user, nil
+}
+
+func (s *Store) GetStaffUserByEmail(ctx context.Context, email string) (domain.StaffUser, error) {
+	var user domain.StaffUser
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, clinic_id, name, email, password_hash, role, created_at
+		 FROM staff_users WHERE email = $1`, email,
+	).Scan(&user.ID, &user.ClinicID, &user.Name, &user.Email,
+		&user.PasswordHash, &user.Role, &user.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.StaffUser{}, domain.ErrInvalidCredentials
+		}
+		return domain.StaffUser{}, fmt.Errorf("get staff user by email: %w", err)
+	}
+	return user, nil
+}
+
+func (s *Store) CreateAuthSession(ctx context.Context, tokenHash []byte, userID, clinicID int64, csrfToken string, expiresAt time.Time) (domain.AuthSession, error) {
+	session := domain.AuthSession{
+		UserID:    userID,
+		ClinicID:  clinicID,
+		CSRFToken: csrfToken,
+		ExpiresAt: expiresAt,
+	}
+	err := s.pool.QueryRow(ctx,
+		`INSERT INTO auth_sessions (token_hash, user_id, clinic_id, csrf_token, expires_at)
+		 VALUES ($1, $2, $3, $4, $5)
+		 RETURNING id, created_at`,
+		tokenHash, userID, clinicID, csrfToken, expiresAt,
+	).Scan(&session.ID, &session.CreatedAt)
+	if err != nil {
+		return domain.AuthSession{}, fmt.Errorf("create auth session: %w", err)
+	}
+	return session, nil
+}

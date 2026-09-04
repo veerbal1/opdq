@@ -37,7 +37,7 @@ func run() error {
 	}
 	slog.Info("connected to database")
 
-	h := handler.NewHandler(store.NewStore(pool))
+	h := handler.NewHandler(store.NewStore(pool), cfg.CookieSecure)
 
 	mux := h.Routes()
 

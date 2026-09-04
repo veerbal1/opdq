@@ -55,3 +55,29 @@ type Doctor struct {
 	ClinicID int64
 	Name     string
 }
+
+type Role string
+
+const (
+	RoleAdmin        Role = "admin"
+	RoleReceptionist Role = "receptionist"
+)
+
+type StaffUser struct {
+	ID           int64
+	ClinicID     int64
+	Name         string
+	Email        string
+	PasswordHash string
+	Role         Role
+	CreatedAt    time.Time
+}
+
+type AuthSession struct {
+	ID        int64
+	UserID    int64
+	ClinicID  int64
+	CSRFToken string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}

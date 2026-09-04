@@ -7,8 +7,9 @@ import (
 )
 
 type Config struct {
-	DatabaseURL string
-	Port        string
+	DatabaseURL  string
+	Port         string
+	CookieSecure bool
 }
 
 func Load() (Config, error) {
@@ -23,7 +24,8 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		DatabaseURL: databaseURL,
-		Port:        port,
+		DatabaseURL:  databaseURL,
+		Port:         port,
+		CookieSecure: os.Getenv("COOKIE_SECURE") == "true",
 	}, nil
 }

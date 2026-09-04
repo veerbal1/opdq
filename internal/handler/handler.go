@@ -7,12 +7,14 @@ import (
 )
 
 type Handler struct {
-	store *store.Store
+	store         *store.Store
+	secureCookies bool
 }
 
-func NewHandler(s *store.Store) *Handler {
+func NewHandler(s *store.Store, secureCookies bool) *Handler {
 	return &Handler{
-		store: s,
+		store:         s,
+		secureCookies: secureCookies,
 	}
 }
 
@@ -30,6 +32,7 @@ func (h *Handler) Routes() *http.ServeMux {
 	mux.HandleFunc("POST /sessions/{id}/walkins", h.CreateWalkInHandler)
 	mux.HandleFunc("POST /appointments/{id}/transition", h.TransitionAppointmentHandler)
 	mux.HandleFunc("GET /sessions/{id}/queue", h.QueueForSessionHandler)
+	mux.HandleFunc("POST /login", h.LoginHandler)
 
 	return mux
 }

@@ -29,3 +29,6 @@ psql-app:
 
 test:
 	go test -race ./...
+
+seed:
+	set -a; . ./.env; set +a; go run ./cmd/seed
