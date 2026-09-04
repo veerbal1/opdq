@@ -204,7 +204,7 @@ func (s *Store) TransitionAppointment(ctx context.Context, clinicID, appointment
 }
 
 func (s *Store) QueueForSession(ctx context.Context, clinicID, sessionID int64) ([]domain.Appointment, error) {
-	query := "SELECT id, clinic_id, session_id, token_no, patient_name, contact_channel, contact_address, queued_at, priority, state FROM appointments WHERE session_id = $1 AND clinic_id = $2 AND state = 'waiting' ORDER BY priority DESC, queued_at ASC"
+	query := "SELECT id, clinic_id, session_id, token_no, patient_name, contact_channel, contact_address, queued_at, priority, state FROM appointments WHERE session_id = $1 AND clinic_id = $2 AND state IN ('waiting', 'in_consultation') ORDER BY CASE WHEN state = 'in_consultation' THEN 0 ELSE 1 END, priority DESC, queued_at ASC"
 	rows, err := s.pool.Query(ctx, query, sessionID, clinicID)
 
 	if err != nil {
@@ -359,4 +359,60 @@ func (s *Store) SessionsForDate(ctx context.Context, clinicID int64, date time.T
 		return nil, fmt.Errorf("sessions for date: %w", err)
 	}
 	return sessions, nil
+}
+
+func (s *Store) DoctorsForClinic(ctx context.Context, clinicID int64) ([]domain.Doctor, error) {
+	rows, err := s.pool.Query(ctx,
+		"SELECT id, clinic_id, name FROM doctors WHERE clinic_id = $1 ORDER BY name", clinicID)
+	if err != nil {
+		return nil, fmt.Errorf("doctors for clinic: %w", err)
+	}
+	defer rows.Close()
+
+	doctors := []domain.Doctor{}
+	for rows.Next() {
+		var d domain.Doctor
+		if err := rows.Scan(&d.ID, &d.ClinicID, &d.Name); err != nil {
+			return nil, fmt.Errorf("doctors for clinic: %w", err)
+		}
+		doctors = append(doctors, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("doctors for clinic: %w", err)
+	}
+	return doctors, nil
+}
+
+// updateSession applies one guarded change to a session row. The version in the
+// WHERE clause is what makes a stale write fail instead of silently overwriting
+// somebody else's change.
+func (s *Store) updateSession(ctx context.Context, op, setClause string, args ...any) (domain.Session, error) {
+	query := `UPDATE sessions SET ` + setClause + `, version = version + 1
+		 WHERE id = $2 AND clinic_id = $3 AND version = $4
+		 RETURNING id, clinic_id, doctor_id, session_date, starts_at, ends_at,
+		           capacity, delay_min, status, version, avg_consult_sec`
+
+	var x domain.Session
+	err := s.pool.QueryRow(ctx, query, args...).Scan(
+		&x.ID, &x.ClinicID, &x.DoctorID, &x.SessionDate, &x.StartsAt, &x.EndsAt,
+		&x.Capacity, &x.DelayMin, &x.Status, &x.Version, &x.AvgConsultSec)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Either the session is not ours / does not exist, or somebody else
+			// changed it since we read it. Both are the caller's problem to retry.
+			return domain.Session{}, domain.ErrVersionConflict
+		}
+		return domain.Session{}, fmt.Errorf("%s: %w", op, err)
+	}
+	return x, nil
+}
+
+func (s *Store) SetSessionDelay(ctx context.Context, clinicID, sessionID int64, delayMin, version int) (domain.Session, error) {
+	return s.updateSession(ctx, "set session delay", "delay_min = $1",
+		delayMin, sessionID, clinicID, version)
+}
+
+func (s *Store) CloseSession(ctx context.Context, clinicID, sessionID int64, version int) (domain.Session, error) {
+	return s.updateSession(ctx, "close session", "status = $1",
+		domain.Closed, sessionID, clinicID, version)
 }

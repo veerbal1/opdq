@@ -6,9 +6,11 @@ import (
 )
 
 type QueueItem struct {
+	ID          int64  `json:"id"`
 	TokenNo     int    `json:"token_no"`
 	PatientName string `json:"patient_name"`
 	Priority    int    `json:"priority"`
+	State       string `json:"state"`
 }
 
 func (h *Handler) QueueForSessionHandler(w http.ResponseWriter, r *http.Request) {
@@ -32,7 +34,7 @@ func (h *Handler) QueueForSessionHandler(w http.ResponseWriter, r *http.Request)
 
 	queue := make([]QueueItem, 0, len(appointments))
 	for _, a := range appointments {
-		queue = append(queue, QueueItem{TokenNo: a.TokenNo, PatientName: a.PatientName, Priority: a.Priority})
+		queue = append(queue, QueueItem{ID: a.ID, TokenNo: a.TokenNo, PatientName: a.PatientName, Priority: a.Priority, State: string(a.State)})
 	}
 
 	writeJSON(w, http.StatusOK, queue)

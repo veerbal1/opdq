@@ -33,10 +33,14 @@ func (h *Handler) Routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/sessions/{id}/walkins", h.protected(h.CreateWalkInHandler))
 	mux.HandleFunc("POST /api/appointments/{id}/transition", h.protected(h.TransitionAppointmentHandler))
 
+	mux.HandleFunc("POST /api/sessions/{id}/delay", h.protected(h.SetDelayHandler))
+	mux.HandleFunc("POST /api/sessions/{id}/close", h.protected(h.CloseSessionHandler))
+
 	mux.HandleFunc("POST /api/logout", h.protected(h.LogoutHandler))
 
 	mux.HandleFunc("GET /api/me", h.RequireAuth(h.MeHandler))
 	mux.HandleFunc("GET /api/sessions", h.RequireAuth(h.SessionsForDateHandler))
+	mux.HandleFunc("GET /api/doctors", h.RequireAuth(h.DoctorsHandler))
 	mux.HandleFunc("GET /api/sessions/{id}/queue", h.RequireAuth(h.QueueForSessionHandler))
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {

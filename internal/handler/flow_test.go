@@ -96,8 +96,13 @@ func TestFullFlow(t *testing.T) {
 	if queueRec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", queueRec.Code, queueRec.Body.String())
 	}
-	if queueRec.Body.String() != "[]\n" {
-		t.Fatalf("expected empty queue, got %s", queueRec.Body.String())
+	// The called patient must stay on the receptionist's screen, now as
+	// in_consultation — otherwise there is no row left to press Done on.
+	if !strings.Contains(queueRec.Body.String(), `"state":"in_consultation"`) {
+		t.Fatalf("expected the called patient to remain in the queue as in_consultation, got %s", queueRec.Body.String())
+	}
+	if !strings.Contains(queueRec.Body.String(), `"token_no":1`) {
+		t.Fatalf("expected token_no 1 in the queue, got %s", queueRec.Body.String())
 	}
 
 	rows, err := testPool.Query(context.Background(),

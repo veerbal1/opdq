@@ -72,3 +72,52 @@ export async function logout(): Promise<void> {
   await request<void>("POST", "/api/logout");
   csrfToken = null;
 }
+
+export type SessionItem = {
+  id: number
+  doctor_id: number
+  doctor_name: string
+  starts_at: string
+  ends_at: string
+  capacity: number
+  delay_min: number
+  avg_consult_sec: number
+  status: string
+  version: number
+}
+
+export type QueueItem = {
+  id: number
+  token_no: number
+  patient_name: string
+  priority: number
+}
+
+export function listSessions(date?: string): Promise<SessionItem[]> {
+  const path = date ? `/api/sessions?date=${encodeURIComponent(date)}` : '/api/sessions'
+  return request<SessionItem[]>('GET', path)
+}
+
+export function queue(sessionId: number): Promise<QueueItem[]> {
+  return request<QueueItem[]>('GET', `/api/sessions/${sessionId}/queue`)
+}
+
+export function createWalkIn(
+  sessionId: number,
+  patientName: string,
+  contact: string,
+  priority = 0,
+): Promise<{ id: number; token_no: number; state: string }> {
+  return request('POST', `/api/sessions/${sessionId}/walkins`, {
+    patient_name: patientName,
+    contact,
+    priority,
+  })
+}
+
+export function transition(
+  appointmentId: number,
+  to: string,
+): Promise<{ id: number; state: string }> {
+  return request('POST', `/api/appointments/${appointmentId}/transition`, { to })
+}

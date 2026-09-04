@@ -37,3 +37,29 @@ func (h *Handler) CreateDoctorHandler(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusCreated, CreateDoctorResponse{ID: doctor.ID, ClinicID: doctor.ClinicID})
 }
+
+type DoctorItem struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+func (h *Handler) DoctorsHandler(w http.ResponseWriter, r *http.Request) {
+	sess, ok := sessionFrom(r.Context())
+	if !ok {
+		writeErrorMessage(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	doctors, err := h.store.DoctorsForClinic(r.Context(), sess.ClinicID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	items := make([]DoctorItem, 0, len(doctors))
+	for _, d := range doctors {
+		items = append(items, DoctorItem{ID: d.ID, Name: d.Name})
+	}
+
+	writeJSON(w, http.StatusOK, items)
+}
