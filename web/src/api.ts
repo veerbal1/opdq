@@ -137,3 +137,16 @@ export function setDelay(
 export function closeSession(sessionId: number, version: number): Promise<SessionItem> {
   return request('POST', `/api/sessions/${sessionId}/close`, { version })
 }
+
+export type BoardData = {
+  session_id: number
+  doctor_name: string
+  delay_min: number
+  status: string
+  now_serving: number | null
+  next: number[]
+}
+
+export function board(sessionId: number): Promise<BoardData> {
+  return request<BoardData>('GET', `/api/board/${sessionId}`)
+}
