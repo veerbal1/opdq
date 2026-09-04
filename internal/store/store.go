@@ -331,3 +331,32 @@ func (s *Store) GetStaffUserByID(ctx context.Context, clinicID, userID int64) (d
 	}
 	return user, nil
 }
+
+func (s *Store) SessionsForDate(ctx context.Context, clinicID int64, date time.Time) ([]domain.SessionWithDoctor, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT s.id, s.clinic_id, s.doctor_id, s.session_date, s.starts_at, s.ends_at,
+		        s.capacity, s.delay_min, s.status, s.version, s.avg_consult_sec, d.name
+		 FROM sessions s
+		 JOIN doctors d ON d.id = s.doctor_id
+		 WHERE s.clinic_id = $1 AND s.session_date = $2
+		 ORDER BY s.starts_at`, clinicID, date)
+	if err != nil {
+		return nil, fmt.Errorf("sessions for date: %w", err)
+	}
+	defer rows.Close()
+
+	sessions := []domain.SessionWithDoctor{}
+	for rows.Next() {
+		var x domain.SessionWithDoctor
+		if err := rows.Scan(&x.ID, &x.ClinicID, &x.DoctorID, &x.SessionDate,
+			&x.StartsAt, &x.EndsAt, &x.Capacity, &x.DelayMin, &x.Status,
+			&x.Version, &x.AvgConsultSec, &x.DoctorName); err != nil {
+			return nil, fmt.Errorf("sessions for date: %w", err)
+		}
+		sessions = append(sessions, x)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("sessions for date: %w", err)
+	}
+	return sessions, nil
+}

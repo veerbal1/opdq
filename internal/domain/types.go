@@ -42,6 +42,13 @@ type Session struct {
 	DelayMin    int
 	Status      SessionStatus
 	Version     int
+
+	AvgConsultSec int
+}
+
+type SessionWithDoctor struct {
+	Session
+	DoctorName string
 }
 
 type Clinic struct {

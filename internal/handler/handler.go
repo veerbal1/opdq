@@ -36,6 +36,7 @@ func (h *Handler) Routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/logout", h.protected(h.LogoutHandler))
 
 	mux.HandleFunc("GET /api/me", h.RequireAuth(h.MeHandler))
+	mux.HandleFunc("GET /api/sessions", h.RequireAuth(h.SessionsForDateHandler))
 	mux.HandleFunc("GET /api/sessions/{id}/queue", h.RequireAuth(h.QueueForSessionHandler))
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {

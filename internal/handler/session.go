@@ -53,3 +53,59 @@ func (h *Handler) CreateSessionHandler(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusCreated, CreateSessionResponse{ID: session.ID})
 }
+
+type SessionItem struct {
+	ID            int64  `json:"id"`
+	DoctorID      int64  `json:"doctor_id"`
+	DoctorName    string `json:"doctor_name"`
+	StartsAt      string `json:"starts_at"`
+	EndsAt        string `json:"ends_at"`
+	Capacity      int    `json:"capacity"`
+	DelayMin      int    `json:"delay_min"`
+	AvgConsultSec int    `json:"avg_consult_sec"`
+	Status        string `json:"status"`
+	Version       int    `json:"version"`
+}
+
+func (h *Handler) SessionsForDateHandler(w http.ResponseWriter, r *http.Request) {
+	sess, ok := sessionFrom(r.Context())
+	if !ok {
+		writeErrorMessage(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	date := time.Now()
+	if raw := r.URL.Query().Get("date"); raw != "" {
+		parsed, err := time.Parse("2006-01-02", raw)
+		if err != nil {
+			writeErrorMessage(w, http.StatusBadRequest, "invalid date, expected YYYY-MM-DD")
+			return
+		}
+		date = parsed
+	}
+	day := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
+
+	sessions, err := h.store.SessionsForDate(r.Context(), sess.ClinicID, day)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	items := make([]SessionItem, 0, len(sessions))
+	for _, x := range sessions {
+		items = append(items, SessionItem{
+			ID:            x.ID,
+			DoctorID:      x.DoctorID,
+			DoctorName:    x.DoctorName,
+			StartsAt:      x.StartsAt.Format(time.RFC3339),
+			EndsAt:        x.EndsAt.Format(time.RFC3339),
+			Capacity:      x.Capacity,
+			DelayMin:      x.DelayMin,
+			AvgConsultSec: x.AvgConsultSec,
+			Status:        string(x.Status),
+			Version:       x.Version,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, items)
+}
