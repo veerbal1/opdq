@@ -21,6 +21,11 @@ type CreateWalkInResponse struct {
 }
 
 func (h *Handler) CreateWalkInHandler(w http.ResponseWriter, r *http.Request) {
+	sess, ok := sessionFrom(r.Context())
+	if !ok {
+		writeErrorMessage(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	sessionID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		writeErrorMessage(w, http.StatusBadRequest, "invalid session id")
@@ -40,7 +45,7 @@ func (h *Handler) CreateWalkInHandler(w http.ResponseWriter, r *http.Request) {
 		contact = domain.Contact{Channel: "sms", Address: req.Contact}
 	}
 
-	appointment, err := h.store.CreateWalkIn(r.Context(), sessionID, req.PatientName, contact, req.Priority, nil)
+	appointment, err := h.store.CreateWalkIn(r.Context(), sess.ClinicID, sessionID, req.PatientName, contact, req.Priority, &sess.UserID)
 	if err != nil {
 		writeError(w, err)
 		return

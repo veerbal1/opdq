@@ -16,16 +16,7 @@ func TestConcurrentWalkIns(t *testing.T) {
 	resetDB(t)
 	sess := loginTestUser(t)
 
-	clinicReq := authedRequest(t, sess, "POST", "/clinics", `{"name":"Race Clinic"}`)
-	clinicRec := httptest.NewRecorder()
-	testMux.ServeHTTP(clinicRec, clinicReq)
-	var clinicResp handler.CreateClinicResponse
-	if err := json.NewDecoder(clinicRec.Body).Decode(&clinicResp); err != nil {
-		t.Fatalf("clinic: %d %s", clinicRec.Code, clinicRec.Body.String())
-	}
-
-	doctorReq := authedRequest(t, sess, "POST",
-		fmt.Sprintf("/clinics/%d/doctors", clinicResp.ID), `{"name":"Dr. Race"}`)
+	doctorReq := authedRequest(t, sess, "POST", "/doctors", `{"name":"Dr. Race"}`)
 	doctorRec := httptest.NewRecorder()
 	testMux.ServeHTTP(doctorRec, doctorReq)
 	var doctorResp handler.CreateDoctorResponse
@@ -36,8 +27,8 @@ func TestConcurrentWalkIns(t *testing.T) {
 	startsAt := time.Now().Add(-time.Hour).Format(time.RFC3339)
 	endsAt := time.Now().Add(8 * time.Hour).Format(time.RFC3339)
 	sessionBody := fmt.Sprintf(
-		`{"clinic_id":%d,"doctor_id":%d,"starts_at":%q,"ends_at":%q,"capacity":30}`,
-		clinicResp.ID, doctorResp.ID, startsAt, endsAt)
+		`{"doctor_id":%d,"starts_at":%q,"ends_at":%q,"capacity":30}`,
+		doctorResp.ID, startsAt, endsAt)
 
 	sessionReq := authedRequest(t, sess, "POST", "/sessions", sessionBody)
 	sessionRec := httptest.NewRecorder()

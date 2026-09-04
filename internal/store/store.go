@@ -56,7 +56,6 @@ func (s *Store) CreateSession(ctx context.Context, clinicID, doctorID int64, ses
 
 	var session domain.Session
 	session.DoctorID = doctorID
-	session.ClinicID = clinicID
 	session.SessionDate = sessionDate
 	session.StartsAt = startsAt
 	session.EndsAt = endsAt
@@ -71,14 +70,13 @@ func (s *Store) CreateSession(ctx context.Context, clinicID, doctorID int64, ses
 	return session, nil
 }
 
-func (s *Store) CreateWalkIn(ctx context.Context, sessionID int64, patientName string, contact domain.Contact, priority int, actorID *int64) (domain.Appointment, error) {
+func (s *Store) CreateWalkIn(ctx context.Context, clinicID, sessionID int64, patientName string, contact domain.Contact, priority int, actorID *int64) (domain.Appointment, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return domain.Appointment{}, fmt.Errorf("create walk-in: begin: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	var clinicID int64
 	var endsAt time.Time
 	err = tx.QueryRow(ctx, "SELECT clinic_id, ends_at FROM sessions WHERE id = $1", sessionID).Scan(&clinicID, &endsAt)
 	if err != nil {
@@ -139,7 +137,7 @@ func (s *Store) CreateWalkIn(ctx context.Context, sessionID int64, patientName s
 	return appointment, nil
 }
 
-func (s *Store) TransitionAppointment(ctx context.Context, appointmentID int64, to domain.State, actorID *int64, reason string) (domain.Appointment, error) {
+func (s *Store) TransitionAppointment(ctx context.Context, clinicID, appointmentID int64, to domain.State, actorID *int64, reason string) (domain.Appointment, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return domain.Appointment{}, fmt.Errorf("transition appointment: begin: %w", err)
@@ -147,7 +145,7 @@ func (s *Store) TransitionAppointment(ctx context.Context, appointmentID int64, 
 	defer tx.Rollback(ctx)
 
 	var currentState domain.State
-	err = tx.QueryRow(ctx, "SELECT state FROM appointments WHERE id = $1 FOR UPDATE", appointmentID).Scan(&currentState)
+	err = tx.QueryRow(ctx, "SELECT state FROM appointments WHERE id = $1 AND clinic_id = $2 FOR UPDATE", appointmentID, clinicID).Scan(&currentState)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Appointment{}, domain.ErrAppointmentNotFound
@@ -166,13 +164,13 @@ func (s *Store) TransitionAppointment(ctx context.Context, appointmentID int64, 
 		    started_at   = CASE WHEN $1 = 'in_consultation' THEN now() ELSE started_at END,
 		    completed_at = CASE WHEN $1 = 'done'            THEN now() ELSE completed_at END,
 		    version      = version + 1
-		WHERE id = $2
+		WHERE id = $2 AND clinic_id = $3
 		RETURNING id, clinic_id, session_id, token_no, patient_name,
 		          contact_channel, contact_address, queued_at, priority, state`
 
 	var appointment domain.Appointment
 	var channel, address *string
-	err = tx.QueryRow(ctx, updateQuery, to, appointmentID).Scan(
+	err = tx.QueryRow(ctx, updateQuery, to, appointmentID, clinicID).Scan(
 		&appointment.ID, &appointment.ClinicID, &appointment.SessionID,
 		&appointment.TokenNo, &appointment.PatientName, &channel, &address,
 		&appointment.QueuedAt, &appointment.Priority, &appointment.State,
@@ -205,9 +203,9 @@ func (s *Store) TransitionAppointment(ctx context.Context, appointmentID int64, 
 	return appointment, nil
 }
 
-func (s *Store) QueueForSession(ctx context.Context, sessionID int64) ([]domain.Appointment, error) {
-	query := "SELECT id, clinic_id, session_id, token_no, patient_name, contact_channel, contact_address, queued_at, priority, state FROM appointments WHERE session_id = $1 AND state = 'waiting' ORDER BY priority DESC, queued_at ASC"
-	rows, err := s.pool.Query(ctx, query, sessionID)
+func (s *Store) QueueForSession(ctx context.Context, clinicID, sessionID int64) ([]domain.Appointment, error) {
+	query := "SELECT id, clinic_id, session_id, token_no, patient_name, contact_channel, contact_address, queued_at, priority, state FROM appointments WHERE session_id = $1 AND clinic_id = $2 AND state = 'waiting' ORDER BY priority DESC, queued_at ASC"
+	rows, err := s.pool.Query(ctx, query, sessionID, clinicID)
 
 	if err != nil {
 		return nil, fmt.Errorf("queue for session: %w", err)

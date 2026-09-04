@@ -7,7 +7,6 @@ import (
 )
 
 type CreateSessionRequest struct {
-	ClinicID int64  `json:"clinic_id"`
 	DoctorID int64  `json:"doctor_id"`
 	StartsAt string `json:"starts_at"`
 	EndsAt   string `json:"ends_at"`
@@ -19,11 +18,15 @@ type CreateSessionResponse struct {
 }
 
 func (h *Handler) CreateSessionHandler(w http.ResponseWriter, r *http.Request) {
+	sess, ok := sessionFrom(r.Context())
+	if !ok {
+		writeErrorMessage(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
 	var req CreateSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
 		writeErrorMessage(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -42,7 +45,7 @@ func (h *Handler) CreateSessionHandler(w http.ResponseWriter, r *http.Request) {
 
 	sessionDate := time.Date(startsAt.Year(), startsAt.Month(), startsAt.Day(), 0, 0, 0, 0, startsAt.Location())
 
-	session, err := h.store.CreateSession(r.Context(), req.ClinicID, req.DoctorID, sessionDate, startsAt, endsAt, req.Capacity)
+	session, err := h.store.CreateSession(r.Context(), sess.ClinicID, req.DoctorID, sessionDate, startsAt, endsAt, req.Capacity)
 	if err != nil {
 		writeError(w, err)
 		return

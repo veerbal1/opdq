@@ -3,7 +3,6 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 )
 
 type CreateDoctorRequest struct {
@@ -16,9 +15,9 @@ type CreateDoctorResponse struct {
 }
 
 func (h *Handler) CreateDoctorHandler(w http.ResponseWriter, r *http.Request) {
-	clinicID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, "invalid clinic id")
+	sess, ok := sessionFrom(r.Context())
+	if !ok {
+		writeErrorMessage(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
@@ -30,7 +29,7 @@ func (h *Handler) CreateDoctorHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	doctor, err := h.store.CreateDoctor(r.Context(), req.Name, clinicID)
+	doctor, err := h.store.CreateDoctor(r.Context(), req.Name, sess.ClinicID)
 	if err != nil {
 		writeError(w, err)
 		return

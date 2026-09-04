@@ -28,8 +28,7 @@ func (h *Handler) Routes() *http.ServeMux {
 	mux.HandleFunc("GET /healthz", h.HealthCheck)
 	mux.HandleFunc("POST /login", h.LoginHandler)
 
-	mux.HandleFunc("POST /clinics", h.protected(h.CreateClinicHandler))
-	mux.HandleFunc("POST /clinics/{id}/doctors", h.protected(h.CreateDoctorHandler))
+	mux.HandleFunc("POST /doctors", h.protected(h.CreateDoctorHandler))
 	mux.HandleFunc("POST /sessions", h.protected(h.CreateSessionHandler))
 	mux.HandleFunc("POST /sessions/{id}/walkins", h.protected(h.CreateWalkInHandler))
 	mux.HandleFunc("POST /appointments/{id}/transition", h.protected(h.TransitionAppointmentHandler))

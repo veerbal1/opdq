@@ -17,21 +17,7 @@ func TestFullFlow(t *testing.T) {
 	resetDB(t)
 	sess := loginTestUser(t)
 
-	req := authedRequest(t, sess, "POST", "/clinics", `{"name":"Test Clinic"}`)
-	rec := httptest.NewRecorder()
-	testMux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	var clinicResp handler.CreateClinicResponse
-	if err := json.NewDecoder(rec.Body).Decode(&clinicResp); err != nil {
-		t.Fatal(err)
-	}
-
-	doctorReq := authedRequest(t, sess, "POST",
-		fmt.Sprintf("/clinics/%d/doctors", clinicResp.ID), `{"name":"Dr. Test"}`)
+	doctorReq := authedRequest(t, sess, "POST", "/doctors", `{"name":"Dr. Test"}`)
 	doctorRec := httptest.NewRecorder()
 	testMux.ServeHTTP(doctorRec, doctorReq)
 
@@ -47,8 +33,8 @@ func TestFullFlow(t *testing.T) {
 	startsAt := time.Now().Add(-time.Hour).Format(time.RFC3339)
 	endsAt := time.Now().Add(8 * time.Hour).Format(time.RFC3339)
 	sessionBody := fmt.Sprintf(
-		`{"clinic_id":%d,"doctor_id":%d,"starts_at":%q,"ends_at":%q,"capacity":30}`,
-		clinicResp.ID, doctorResp.ID, startsAt, endsAt)
+		`{"doctor_id":%d,"starts_at":%q,"ends_at":%q,"capacity":30}`,
+		doctorResp.ID, startsAt, endsAt)
 
 	sessionReq := authedRequest(t, sess, "POST", "/sessions", sessionBody)
 	sessionRec := httptest.NewRecorder()

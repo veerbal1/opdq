@@ -12,13 +12,19 @@ type QueueItem struct {
 }
 
 func (h *Handler) QueueForSessionHandler(w http.ResponseWriter, r *http.Request) {
+	sess, ok := sessionFrom(r.Context())
+	if !ok {
+		writeErrorMessage(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	sessionID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		writeErrorMessage(w, http.StatusBadRequest, "invalid session id")
 		return
 	}
 
-	appointments, err := h.store.QueueForSession(r.Context(), sessionID)
+	appointments, err := h.store.QueueForSession(r.Context(), sess.ClinicID, sessionID)
 	if err != nil {
 		writeError(w, err)
 		return

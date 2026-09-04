@@ -18,6 +18,12 @@ type TransitionAppointmentResponse struct {
 }
 
 func (h *Handler) TransitionAppointmentHandler(w http.ResponseWriter, r *http.Request) {
+	sess, ok := sessionFrom(r.Context())
+	if !ok {
+		writeErrorMessage(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	appointmentID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		writeErrorMessage(w, http.StatusBadRequest, "invalid appointment id")
@@ -32,7 +38,7 @@ func (h *Handler) TransitionAppointmentHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	appointment, err := h.store.TransitionAppointment(r.Context(), appointmentID, domain.State(req.To), nil, "")
+	appointment, err := h.store.TransitionAppointment(r.Context(), sess.ClinicID, appointmentID, domain.State(req.To), &sess.UserID, "")
 	if err != nil {
 		writeError(w, err)
 		return
