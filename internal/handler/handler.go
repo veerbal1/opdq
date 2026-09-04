@@ -33,6 +33,9 @@ func (h *Handler) Routes() *http.ServeMux {
 	mux.HandleFunc("POST /sessions/{id}/walkins", h.protected(h.CreateWalkInHandler))
 	mux.HandleFunc("POST /appointments/{id}/transition", h.protected(h.TransitionAppointmentHandler))
 
+	mux.HandleFunc("POST /logout", h.protected(h.LogoutHandler))
+
+	mux.HandleFunc("GET /me", h.RequireAuth(h.MeHandler))
 	mux.HandleFunc("GET /sessions/{id}/queue", h.RequireAuth(h.QueueForSessionHandler))
 
 	return mux

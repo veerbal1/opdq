@@ -307,3 +307,27 @@ func (s *Store) GetAuthSession(ctx context.Context, tokenHash []byte) (domain.Au
 	}
 	return sess, nil
 }
+
+func (s *Store) DeleteAuthSession(ctx context.Context, tokenHash []byte) error {
+	_, err := s.pool.Exec(ctx, "DELETE FROM auth_sessions WHERE token_hash = $1", tokenHash)
+	if err != nil {
+		return fmt.Errorf("delete auth session: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) GetStaffUserByID(ctx context.Context, clinicID, userID int64) (domain.StaffUser, error) {
+	var user domain.StaffUser
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, clinic_id, name, email, password_hash, role, created_at
+		 FROM staff_users WHERE id = $1 AND clinic_id = $2`, userID, clinicID,
+	).Scan(&user.ID, &user.ClinicID, &user.Name, &user.Email,
+		&user.PasswordHash, &user.Role, &user.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.StaffUser{}, domain.ErrUnauthorized
+		}
+		return domain.StaffUser{}, fmt.Errorf("get staff user by id: %w", err)
+	}
+	return user, nil
+}

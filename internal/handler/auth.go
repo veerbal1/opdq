@@ -84,3 +84,57 @@ func (h *Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		CSRFToken: csrfToken,
 	})
 }
+
+type MeResponse struct {
+	UserID    int64  `json:"user_id"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	ClinicID  int64  `json:"clinic_id"`
+	Role      string `json:"role"`
+	CSRFToken string `json:"csrf_token"`
+}
+
+func (h *Handler) MeHandler(w http.ResponseWriter, r *http.Request) {
+	sess, ok := sessionFrom(r.Context())
+	if !ok {
+		writeErrorMessage(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	user, err := h.store.GetStaffUserByID(r.Context(), sess.ClinicID, sess.UserID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, MeResponse{
+		UserID:    user.ID,
+		Name:      user.Name,
+		Email:     user.Email,
+		ClinicID:  user.ClinicID,
+		Role:      string(user.Role),
+		CSRFToken: sess.CSRFToken,
+	})
+}
+
+func (h *Handler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie("session")
+	if err == nil {
+		if err := h.store.DeleteAuthSession(r.Context(), auth.HashToken(c.Value)); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   h.secureCookies,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	w.WriteHeader(http.StatusNoContent)
+}
